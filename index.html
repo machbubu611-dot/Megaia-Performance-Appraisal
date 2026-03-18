@@ -583,6 +583,8 @@
 
         const renderMedicalSafety = () => {
           const isSafetyDisabled = safetyMode === 'view' && !isSuperAdmin;
+          const handleSafetyScore = (qId, status) => { if (isSafetyDisabled) return; setSafetyData(prev => ({ ...prev, [qId]: status })); };
+
           let answeredCount = 0;
           SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => cat.items.forEach(item => { if (safetyData[item.id]) answeredCount++; })));
 
@@ -647,14 +649,14 @@
                             {category.items.map(item => {
                               const status = safetyData[item.id];
                               return (
-                                <div key={item.id} className="p-4">
-                                  <div className="flex items-start gap-2 mb-3">
-                                    {item.isRed && <span className="text-red-500 text-xs mt-1">🔴</span>}
-                                    <p className={`text-base font-medium ${item.isRed ? 'text-red-700 font-bold' : 'text-gray-800'}`}>{item.text}</p>
+                                <div key={item.id} className="p-3 flex items-center justify-between gap-3 hover:bg-gray-50 transition">
+                                  <div className="flex items-start gap-2 flex-1">
+                                    {item.isRed && <span className="text-red-500 text-xs mt-0.5 shrink-0">🔴</span>}
+                                    <p className={`text-sm font-medium leading-snug ${item.isRed ? 'text-red-700 font-bold' : 'text-gray-800'}`}>{item.text}</p>
                                   </div>
-                                  <div className="flex gap-3 pr-14 md:pr-0"> 
-                                    <button onClick={() => !isSafetyDisabled && setSafetyData(prev => ({ ...prev, [item.id]: 'pass' }))} className={`flex-1 py-3 rounded-lg font-bold border-2 flex justify-center items-center gap-2 ${status === 'pass' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>合格</button>
-                                    <button onClick={() => !isSafetyDisabled && setSafetyData(prev => ({ ...prev, [item.id]: 'fail' }))} className={`flex-1 py-3 rounded-lg font-bold border-2 flex justify-center items-center gap-2 ${status === 'fail' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>不合格</button>
+                                  <div className="flex gap-2 shrink-0 pr-12 md:pr-0"> 
+                                    <button onClick={() => !isSafetyDisabled && setSafetyData(prev => ({ ...prev, [item.id]: 'pass' }))} className={`px-4 py-1.5 rounded-md font-bold border-2 transition-all flex justify-center items-center text-sm whitespace-nowrap ${status === 'pass' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>合格</button>
+                                    <button onClick={() => !isSafetyDisabled && setSafetyData(prev => ({ ...prev, [item.id]: 'fail' }))} className={`px-4 py-1.5 rounded-md font-bold border-2 transition-all flex justify-center items-center text-sm whitespace-nowrap ${status === 'fail' ? 'bg-red-50 border-red-500 text-red-700 shadow-sm' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>不合格</button>
                                   </div>
                                 </div>
                               );
