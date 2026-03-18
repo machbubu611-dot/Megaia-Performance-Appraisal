@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>護理部評核系統</title>
+  
+  <!-- 載入 Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- 載入 React 與 Babel (讓瀏覽器直接看懂 React 語法) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- 載入截圖套件 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- 系統樣式設定 -->
+  <style>
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    
+    /* 列印與產出 PDF 用 CSS */
+    @media print {
+      body * { visibility: hidden; }
+      .no-print { display: none !important; }
+      #service-quality-panel, #service-quality-panel * { visibility: visible; }
+      #service-quality-panel { 
+         position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; box-shadow: none; 
+      }
+      @page { margin: 1cm; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans">
+  
+  <!-- 系統掛載點 -->
+  <div id="root"></div>
+
+  <!-- Firebase 模組載入 -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+    window.FirebaseAPI = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, doc, setDoc, onSnapshot };
+    window.dispatchEvent(new Event('firebaseLoaded'));
+  </script>
+
+  <!-- 系統主程式 (React) -->
+  <script type="text/babel">
+    const initApp = () => {
+      const { useState, useEffect } = React;
+      const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, doc, setDoc, onSnapshot } = window.FirebaseAPI;
+
+      // --- 0. Firebase 初始化與設定 ---
+      const myFirebaseConfig = {
+        apiKey: "AIzaSyCY3wsI3Hg5m50D7xfzJmb6-AVJyaQCEDM",
+        authDomain: "megaia-performance-appraisal.firebaseapp.com",
+        projectId: "megaia-performance-appraisal",
+        storageBucket: "megaia-performance-appraisal.firebasestorage.app",
+        messagingSenderId: "905737606701",
+        appId: "1:905737606701:web:018f30783156f2b7d20aa4",
+        measurementId: "G-NSZT37EZ12"
+      };
+
+      const app = initializeApp(myFirebaseConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+      const appId = 'megaia-appraisal';
+
+      // --- 1. 資料庫定義 ---
+      const BRANCHES = ['台北仁愛', '桃園中正', '新竹光明', '台中向上', '台中崇德', '高雄巨蛋'];
+      const MONTHS = ['2026-01', '2026-02', '2026-03'];
+      const NURSE_DATA = {
+        '台北仁愛': ['楊馥華', '林妤辰', '劉玳均'],
+        '桃園中正': ['林玉美', '張沛璇', '江謝宜臻', '張思晴'],
+        '新竹光明': ['楊琇婷', '林慧珊'],
+        '台中向上': ['吳羿葶', '李宛軒', '鄭瑞屏', '黃珮綺'],
+        '台中崇德': ['吳孟樵', '姜宜君', '陳姵妘', '陳晏涵'],
+        '高雄巨蛋': ['林宣羽', '盧巧嵐', '王子芸']
+      };
+
+      const HEAD_NURSES = ['李慧珊', '劉姮麗']; 
+
+      const MEDICAL_SOP = [
+        { title: '一、目的', content: '確保醫美診所於手術、微整注射及電音波療程中，全面落實病人安全、醫療品質與風險控管。' },
+        { title: '二、適用人員', content: '本診所全體護理人員、醫師及相關醫療工作人員。' },
+        { title: '三、適用範圍', content: '手術療程、微整注射療程、電波／音波等能量型療程／血液淨化。' },
+        { title: '四、作業原則', content: '依循醫療法、醫療安全原則及內部 SOP 執行，確保療程正確、安全與可追溯性。' },
+        { title: '五、護理師醫療安全作業流程', content: '1. 病人辨識與療程確認\n2. 無菌操作與感染控制\n3. 用藥與設備安全確認\n4. 療程中病人安全監測\n5. 術後照護與追蹤\n6. 異常事件通報' },
+        { title: '六、異常事件處理', content: '發生任何醫療安全事件，應立即通報醫師與主管，並完成事件通報與改善追蹤。' },
+        { title: '七、教育訓練與稽核', content: '護理師需定期接受教育訓練，並依稽核表單進行內部醫療安全稽核。' }
+      ];
+
+      const SERVICE_QUESTIONS = [
+        { id: 's1', title: '一、醫療專業技術', desc: '操作醫療儀器時注重顧客安全，確保參數設定準確。於手術與微整協助中落實無菌原則。' },
+        { id: 's2', title: '二、正向態度與團隊合作', desc: '具備正向應對態度，能迅速且有效處理現場顧客需求。尊重團隊同仁，主動支援。' },
+        { id: 's3', title: '三、自我紀律與職業素養', desc: '遵守工作規範，具備良好時間觀念，並維持服儀整潔。配合診所教育訓練。' },
+        { id: 's4', title: '四、療程衛教與客戶應對技巧', desc: '態度親切及說明衛教時清楚明瞭與顧客互動良好，積極協助預約回診。' },
+        { id: 's5', title: '五、團隊正向溝通與配合', desc: '能與店內各部門保持良好溝通，積極配合協作，展現互助精神。' },
+        { id: 's6', title: '六、壓力管理與應對能力', desc: '遇到問題或客戶突發狀況時，能冷靜處理、適時回報主管，並協助尋求有效解決方案。' },
+        { id: 's7', title: '七、醫療突發狀況應變能力', desc: '面對醫療突發狀況能冷靜應對，迅速執行急救處置並安撫客戶情緒。' },
+        { id: 's8', title: '八、確認護理執業執照期限', desc: '主動留意執照效期，確實完成積分學習並於期限內完成換照，避免逾期。' },
+        { id: 's9', title: '九、優良服務品質', desc: '落實服務流程並重視細節，熟悉療程內容，能自信回應顧客問題。醫療紀錄書寫必須完整。' },
+        { id: 's10', title: '十、孰悉各醫師需求與習性', desc: '了解各醫師特性，熟記其手術與微整慣用物品、針具與泡製習慣，能精準協助準備。' },
+      ];
+
+      const SAFETY_SECTIONS = [
+        {
+          id: 'sec-0', title: '一.手術&微整無菌操作稽核表',
+          categories: [
+            { title: 'A 進房前準備', items: [{ id: 'm1_a1', text: '1.環境整潔、無雜物、已完成消毒', isRed: false }, { id: 'm1_a2', text: '2.確實檢查無菌包有效期限與封口完整', isRed: true }, { id: 'm1_a3', text: '3.器械分類擺放正確（清潔 / 污染分明）', isRed: false }, { id: 'm1_a4', text: '4.個人防護具配戴完整（口罩、帽子）', isRed: false }, { id: 'm1_a5', text: '5.手術床及靠枕無菌舖單覆蓋完整性', isRed: false }] },
+            { title: 'B 洗手與穿脫無菌衣/手套', items: [{ id: 'm1_b1', text: '1.正確執行外科手消（流程完整）', isRed: true }, { id: 'm1_b2', text: '2.開啟無菌衣方式正確、無污染', isRed: false }, { id: 'm1_b3', text: '3.戴手套流程正確（closed method）', isRed: false }, { id: 'm1_b4', text: '4.手套未接觸口罩/面罩等污染區', isRed: false }, { id: 'm1_b5', text: '5.手套穿戴後保持於胸前、未垂落', isRed: true }] },
+            { title: 'C 手術/微整跟診中的無菌操作', items: [{ id: 'm1_c1', text: '1.維持手術台與無菌區高度一致', isRed: false }, { id: 'm1_c2', text: '2.器械使用未跨過污染區', isRed: false }, { id: 'm1_c3', text: '3.手術(水優/酒優/克菌寧)/微整注射前皮膚消毒正確( 克菌寧由內而外≧2次 )', isRed: true }, { id: 'm1_c4', text: '4.協助手法正確，不跨越無菌區', isRed: false }, { id: 'm1_c5', text: '5.針具未接觸污染物', isRed: false }, { id: 'm1_c6', text: '6.廢針即時丟入利器盒(尖銳及針具數量正確)', isRed: true }, { id: 'm1_c7', text: '7.操作過程未觸碰未消毒區域', isRed: false }] },
+            { title: 'D 手術後收尾無菌流程', items: [{ id: 'm1_d1', text: '1.器械回收數量正確', isRed: false }, { id: 'm1_d2', text: '2.無菌包準備內容正確(器械+包布)', isRed: false }, { id: 'm1_d3', text: '3.廢棄物分類（一般 / 感染性）正確', isRed: false }, { id: 'm1_d4', text: '4.手術床、桌面及燈把確實消毒', isRed: false }] },
+            { title: 'E 紀錄與完整性', items: [{ id: 'm1_e1', text: '1.手術記錄 / 物品使用表完整填寫', isRed: true }, { id: 'm1_e2', text: '2.環境恢復整潔、依標準完成', isRed: false }] }
+          ]
+        },
+        {
+          id: 'sec-1', title: '二.手術紀錄書寫檢視表單',
+          categories: [
+            { title: 'A 手術、麻醉同意書檢視', items: [{ id: 'm2_a1', text: '1.病人基本資料填寫完整', isRed: false }, { id: 'm2_a2', text: '2.手術名稱與實際執行一致', isRed: true }, { id: 'm2_a3', text: '3.風險、副作用、替代方案說明完整', isRed: false }, { id: 'm2_a4', text: '4.麻醉方式記載清楚', isRed: false }, { id: 'm2_a5', text: '5.顧客簽名', isRed: true }, { id: 'm2_a6', text: '6.醫師簽名', isRed: true }, { id: 'm2_a7', text: '7.日期時間填寫完整', isRed: false }] },
+            { title: 'B 手術紀錄單檢視', items: [{ id: 'm2_b1', text: '1.術前注意事項同意書', isRed: true }, { id: 'm2_b2', text: '2.手術評估表', isRed: true }, { id: 'm2_b3', text: '3.麻醉前評估單', isRed: true }, { id: 'm2_b4', text: '4.手術前準備紀錄表', isRed: true }, { id: 'm2_b5', text: '5.輸血同意書', isRed: true }, { id: 'm2_b6', text: '6.手術紀錄書寫完整', isRed: true }, { id: 'm2_b7', text: '7.使用器械／尖銳及紗布計數／植入物+保固卡完整性填寫/引流管', isRed: true }, { id: 'm2_b8', text: '8.出血量、特殊情況記錄', isRed: true }, { id: 'm2_b9', text: '9.術後處置與醫囑紀錄(給藥紀錄及口服藥拍照上傳)', isRed: true }, { id: 'm2_b10', text: '10.檢體(脂肪液)拍照', isRed: true }, { id: 'm2_b11', text: '11.恢復室紀錄書寫完整(生命徵象)', isRed: true }, { id: 'm2_b12', text: '12.管制藥品確認餘量及填寫表單確實', isRed: true }] },
+            { title: 'C 醫師紀錄檢視', items: [{ id: 'm2_c1', text: '1.手術前諮紀錄完整', isRed: true }, { id: 'm2_c2', text: '2.手術描述', isRed: false }, { id: 'm2_c3', text: '3.醫師簽名與日期', isRed: true }] }
+          ]
+        },
+        {
+          id: 'sec-2', title: '三.管制藥品管理稽核表',
+          categories: [
+            { title: 'A.管制藥品基本管理', items: [{ id: 'm3_a1', text: '1.管制藥品有指定專責管理人', isRed: false }, { id: 'm3_a2', text: '2.管制藥品清冊建立且更新', isRed: false }, { id: 'm3_a3', text: '3.藥品來源合法且文件齊全', isRed: true }] },
+            { title: 'B 存放與保管安全', items: [{ id: 'm3_b1', text: '1.管制藥品上鎖專櫃存放', isRed: false }, { id: 'm3_b2', text: '2.鑰匙/密碼由專人管理', isRed: false }, { id: 'm3_b3', text: '3.存放環境溫度與安全符合規範', isRed: false }] },
+            { title: 'C 使用與調劑安全', items: [{ id: 'm3_c1', text: '1.依醫師醫囑使用', isRed: false }, { id: 'm3_c2', text: '2.使用前進行藥品 Double Check', isRed: false }, { id: 'm3_c3', text: '3.劑量、病人、時間紀錄正確', isRed: true }] },
+            { title: 'D 盤點與帳務一致性', items: [{ id: 'm3_d1', text: '1.定期盤點（至少每月）', isRed: true }, { id: 'm3_d2', text: '2.帳冊數量與實際數量一致', isRed: true }, { id: 'm3_d3', text: '3.異常差異有即時通報與說明', isRed: false }] },
+            { title: 'E 報廢、遺失與異常通報', items: [{ id: 'm3_e1', text: '1.過期藥品依規定報廢', isRed: false }, { id: 'm3_e2', text: '2.遺失或短缺依規定通報', isRed: false }, { id: 'm3_e3', text: '3.相關紀錄完整保存', isRed: true }] }
+          ]
+        },
+        {
+          id: 'sec-3', title: '四.微整醫療安全稽核表',
+          categories: [
+            { title: 'A.療程前衛教完整性', items: [{ id: 'm4_a1', text: '1.清楚說明療程目的與原理', isRed: false }, { id: 'm4_a2', text: '2.說明適應症與限制', isRed: false }, { id: 'm4_a3', text: '3.說明可能風險與副作用', isRed: false }, { id: 'm4_a4', text: '4.確認顧客理解內容', isRed: false }] },
+            { title: 'B 療程前評估與安全確認', items: [{ id: 'm4_b1', text: '1.雙重病人辨識（姓名／生日）', isRed: true }, { id: 'm4_b2', text: '2.療程項目、部位、劑量再次確認', isRed: true }, { id: 'm4_b3', text: '3.過敏史、藥物史、懷孕史確認', isRed: false }, { id: 'm4_b4', text: '4.禁忌症評估', isRed: false }, { id: 'm4_b5', text: '5.治療部位與能量設定確認', isRed: false }] },
+            { title: 'C 產品與用藥安全(三讀五對)', items: [{ id: 'm4_c1', text: '1.產品來源合法且包裝完整', isRed: false }, { id: 'm4_c2', text: '2.效期、批號記錄完整', isRed: false }, { id: 'm4_c3', text: '3.冷藏產品保存溫控符合規範', isRed: false }, { id: 'm4_c4', text: '4.注射前再次與醫師確認產品', isRed: true }] },
+            { title: 'D 療程中高風險監測', items: [{ id: 'm4_d1', text: '1.即時觀察疼痛、蒼白、紫紺', isRed: false }, { id: 'm4_d2', text: '2.疑似血管阻塞立即停針', isRed: true }, { id: 'm4_d3', text: '3.依SOP啟動緊急處置流程', isRed: false }] },
+            { title: 'E 療程後立即照護與返家注意事項', items: [{ id: 'm4_e1', text: '1.提醒療程後照護與禁忌說明清楚', isRed: true }, { id: 'm4_e2', text: '2.異常警訊與回診說明', isRed: false }, { id: 'm4_e3', text: '3.已確認顧客藥物過敏史及若診所領取給藥須完成用藥衛教', isRed: true }, { id: 'm4_e4', text: '4.已開立處方籤(拍照上傳至紀錄)並說明至合作藥局領藥流程', isRed: true }] }
+          ]
+        },
+        {
+          id: 'sec-4', title: '五.電音波醫療安全稽核表',
+          categories: [
+            { title: 'A.療程前安全評估', items: [{ id: 'm5_a1', text: '1.雙重病人辨識', isRed: true }, { id: 'm5_a2', text: '2.禁忌症評估（心臟節律器、金屬植入物）', isRed: true }, { id: 'm5_a3', text: '3.治療部位與能量設定確認', isRed: false }] },
+            { title: 'B 設備與耗材安全', items: [{ id: 'm5_b1', text: '1.設備校正與保養紀錄', isRed: false }, { id: 'm5_b2', text: '2.探頭／耗材效期確認', isRed: false }, { id: 'm5_b3', text: '3.導電介質使用正確', isRed: false }] },
+            { title: 'C 療程中操作安全', items: [{ id: 'm5_c1', text: '1.能量輸出依醫囑設定', isRed: false }, { id: 'm5_c2', text: '2.持續詢問病人感受', isRed: false }, { id: 'm5_c3', text: '3.皮膚即時反應監測', isRed: false }] },
+            { title: 'D 燙傷與併發症預防', items: [{ id: 'm5_d1', text: '1.避免同點重複施打', isRed: false }, { id: 'm5_d2', text: '2.異常紅腫立即停機回報', isRed: false }] },
+            { title: 'E 術後照護與紀錄', items: [{ id: 'm5_e1', text: '1.術後護理與防曬說明', isRed: false }, { id: 'm5_e2', text: '2.併發症回診警訊說明', isRed: false }, { id: 'm5_e3', text: '3.療程紀錄完整', isRed: false }, { id: 'm5_e4', text: '4.已確認顧客藥物過敏史及若診所領取給藥須完成用藥衛教', isRed: true }, { id: 'm5_e5', text: '5.已開立處方籤(拍照上傳至紀錄)並說明至合作藥局領藥流程', isRed: true }] }
+          ]
+        }
+      ];
+
+      const SAFETY_QUICK_NAV = ['一. 無菌操作', '二. 紀錄書寫', '三. 管制藥品', '四. 微整安全', '五. 電音波安全'];
+
+      const getEmptyRecord = () => ({
+        serviceData: { self: {}, manager: {}, storeManager: {} },
+        serviceSignatures: { 
+          selfDate: new Date().toISOString().split('T')[0], selfSubmitted: false,
+          managerName: '', managerDate: new Date().toISOString().split('T')[0], managerSubmitted: false,
+          storeManagerName: '', storeManagerDate: new Date().toISOString().split('T')[0], storeManagerComment: '', storeManagerSubmitted: false
+        },
+        safetyData: {},
+        safetySignatures: { headNurseName: '', sectionDates: {} },
+        isServiceComplete: false,
+        isSafetyComplete: false
+      });
+
+      const calculateBonus = (record) => {
+        let serviceBonus = 0; let safetyBonus = 0;
+        if (record) {
+          const finalServiceScore = Object.values(record.serviceData?.storeManager || {}).reduce((sum, val) => sum + (val || 0), 0);
+          if (finalServiceScore === 10) serviceBonus = 3000;
+          else if (finalServiceScore >= 7) serviceBonus = 1500;
+          let redFailCount = 0; let blackFailCount = 0;
+          SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => cat.items.forEach(item => {
+            if (record.safetyData?.[item.id] === 'fail') { if (item.isRed) redFailCount++; else blackFailCount++; }
+          })));
+          if (redFailCount > 0) safetyBonus = 0; else if (blackFailCount <= 5) safetyBonus = 1500; 
+        }
+        return { serviceBonus, safetyBonus, total: serviceBonus + safetyBonus };
+      };
+
+      // --- 主元件 ---
+      function App() {
+        const [currentView, setCurrentView] = useState('home'); 
+        const [user, setUser] = useState(null);
+        const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+        const [allRecords, setAllRecords] = useState({});
+
+        const [baseInfo, setBaseInfo] = useState({ branch: '', month: '', nurse: '' });
+        const [serviceData, setServiceData] = useState(getEmptyRecord().serviceData);
+        const [serviceSignatures, setServiceSignatures] = useState(getEmptyRecord().serviceSignatures);
+        const [safetyData, setSafetyData] = useState({}); 
+        const [safetySignatures, setSafetySignatures] = useState(getEmptyRecord().safetySignatures);
+
+        const [showSopModal, setShowSopModal] = useState(false);
+        const [authRole, setAuthRole] = useState('self'); 
+        const [safetyMode, setSafetyMode] = useState('view'); 
+        const [showPasswordModal, setShowPasswordModal] = useState(false);
+        const [pendingRole, setPendingRole] = useState('');
+        const [passwordInput, setPasswordInput] = useState('');
+        const [sysModal, setSysModal] = useState({ show: false, msg: '', type: 'alert', onConfirm: null, alignLeft: false });
+        const [reportFilter, setReportFilter] = useState({ month: MONTHS[2], branch: '', nurse: '' });
+        const [dashMonth, setDashMonth] = useState(MONTHS[2]);
+
+        const captureScreenshot = (elementId, fileName) => {
+          const el = document.getElementById(elementId);
+          if (el && window.html2canvas) {
+            const noPrintEls = el.querySelectorAll('.no-print');
+            noPrintEls.forEach(e => e.style.display = 'none');
+            window.html2canvas(el, { scale: 2, backgroundColor: '#f9fafb', useCORS: true }).then(canvas => {
+              noPrintEls.forEach(e => e.style.display = ''); 
+              const link = document.createElement('a');
+              link.download = `${fileName}.png`;
+              link.href = canvas.toDataURL('image/png');
+              link.click();
+            }).catch(err => {
+              noPrintEls.forEach(e => e.style.display = '');
+              setSysModal({ show: true, msg: '截圖失敗，請稍後再試。', type: 'alert' });
+            });
+          } else {
+            setSysModal({ show: true, msg: '截圖模組載入中，請稍後幾秒重試！', type: 'alert' });
+          }
+        };
+
+        const exportDashboardToExcel = () => {
+          let csvContent = '\uFEFF分院,護理師,服務品質評核,醫療安全評核,總狀態,達成總獎金(NT$)\n';
+          BRANCHES.forEach(branch => {
+            NURSE_DATA[branch].forEach(nurse => {
+              const rec = allRecords[dashMonth]?.[branch]?.[nurse];
+              const isSrvDone = !!rec?.isServiceComplete;
+              const isSafDone = !!rec?.isSafetyComplete;
+              const bonusInfo = calculateBonus(rec);
+              const statusStr = (isSrvDone && isSafDone) ? '已完成' : '未完成';
+              const bonusStr = (isSrvDone && isSafDone) ? bonusInfo.total : '';
+              csvContent += `${branch},${nurse},${isSrvDone?'V':'X'},${isSafDone?'V':'X'},${statusStr},${bonusStr}\n`;
+            });
+          });
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `全院評核進度_${dashMonth}.csv`;
+          link.click();
+        };
+
+        useEffect(() => {
+          if (!auth) return;
+          const initAuth = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
+          initAuth();
+          const unsubscribe = onAuthStateChanged(auth, setUser);
+          return () => unsubscribe();
+        }, []);
+
+        useEffect(() => {
+          if (!user || !db) return;
+          const collRef = collection(db, 'artifacts', appId, 'public', 'data', 'assessments');
+          const unsubscribe = onSnapshot(collRef, (snapshot) => {
+            const newRecords = {};
+            snapshot.forEach(docSnap => {
+              const data = docSnap.data();
+              const { month, branch, nurse } = data;
+              if (!newRecords[month]) newRecords[month] = {};
+              if (!newRecords[month][branch]) newRecords[month][branch] = {};
+              newRecords[month][branch][nurse] = data;
+            });
+            setAllRecords(newRecords);
+          });
+          return () => unsubscribe();
+        }, [user]);
+
+        const saveCurrentToRecords = async (showSuccessMsg = false) => {
+          if (!baseInfo.month || !baseInfo.branch || !baseInfo.nurse) return;
+          const { month, branch, nurse } = baseInfo;
+
+          const isServiceComplete = !!serviceSignatures.storeManagerSubmitted;
+          let safetyAnsweredCount = 0;
+          SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => safetyAnsweredCount += cat.items.filter(i => safetyData[i.id]).length));
+          const isSafetyComplete = safetySignatures.headNurseName !== '' && safetyAnsweredCount === 96;
+
+          const recordData = { month, branch, nurse, serviceData, serviceSignatures, safetyData, safetySignatures, isServiceComplete, isSafetyComplete };
+
+          const updatedRecords = { ...allRecords };
+          if (!updatedRecords[month]) updatedRecords[month] = {};
+          if (!updatedRecords[month][branch]) updatedRecords[month][branch] = {};
+          updatedRecords[month][branch][nurse] = recordData;
+          setAllRecords(updatedRecords);
+
+          if (db && user) {
+            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData); } 
+            catch (e) { console.error(e); }
+          }
+          if (showSuccessMsg) setSysModal({ show: true, msg: '✅ 評核資料已成功儲存！', type: 'alert' });
+        };
+
+        const navigateTo = (view) => {
+          if (['service', 'safety'].includes(currentView)) saveCurrentToRecords(false); 
+          if (view === 'safety') setSafetyMode(isSuperAdmin ? 'edit' : 'view');
+          if (view === 'report') setReportFilter({ month: baseInfo.month || MONTHS[2], branch: baseInfo.branch, nurse: baseInfo.nurse });
+          setCurrentView(view);
+        };
+
+        const handleBaseInfoChange = (field, value) => {
+          const newBase = { ...baseInfo, [field]: value };
+          if (field === 'branch' || field === 'month') newBase.nurse = '';
+          setBaseInfo(newBase);
+
+          if (newBase.month && newBase.branch && newBase.nurse) {
+            const record = allRecords[newBase.month]?.[newBase.branch]?.[newBase.nurse] || getEmptyRecord();
+            setServiceData(record.serviceData || getEmptyRecord().serviceData);
+            setServiceSignatures(record.serviceSignatures || getEmptyRecord().serviceSignatures);
+            setSafetyData(record.safetyData || {});
+            setSafetySignatures(record.safetySignatures || getEmptyRecord().safetySignatures);
+            setAuthRole('self'); 
+          }
+        };
+
+        const canStartAssessment = baseInfo.branch && baseInfo.month && baseInfo.nurse;
+        const handleRoleSwitch = (role) => { if (role === 'self' || isSuperAdmin) setAuthRole(role); else { setPendingRole(role); setShowPasswordModal(true); } };
+        const handleSafetyUnlock = () => { if (isSuperAdmin) setSafetyMode('edit'); else { setPendingRole('safetyUnlock'); setShowPasswordModal(true); } };
+        const handleSuperAdminToggle = () => {
+          if (isSuperAdmin) { setIsSuperAdmin(false); setSysModal({ show: true, msg: '已登出總管理者模式。', type: 'alert' }); } 
+          else { setPendingRole('superadmin'); setShowPasswordModal(true); }
+        };
+
+        const confirmPassword = () => {
+          const passwords = { manager: '1234', storeManager: 'admin', safetyUnlock: 'headnurse', superadmin: 'superadmin' };
+          if (passwordInput === passwords[pendingRole]) {
+            if (pendingRole === 'safetyUnlock') setSafetyMode('edit');
+            else if (pendingRole === 'superadmin') { setIsSuperAdmin(true); if (currentView === 'safety') setSafetyMode('edit'); } 
+            else setAuthRole(pendingRole);
+            setShowPasswordModal(false); setPasswordInput('');
+          } else setSysModal({ show: true, msg: '密碼錯誤，請重新輸入。', type: 'alert' });
+        };
+
+        const handleSafetySaveAndReturn = () => {
+          if (safetyMode !== 'edit') return setCurrentView('home');
+          let answeredCount = 0; let missingItemsList = []; 
+          SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => cat.items.forEach(item => {
+            if (safetyData[item.id]) answeredCount++;
+            else missingItemsList.push(`📍 【${sec.title.split('.')[1] || sec.title}】> ${cat.title}\n   ❌ ${item.text}`);
+          })));
+          
+          if (answeredCount < 96) {
+            const displayMissing = missingItemsList.slice(0, 3).join('\n\n');
+            const extraMsg = missingItemsList.length > 3 ? `\n\n...以及其他 ${missingItemsList.length - 3} 項未評核` : '';
+            setSysModal({
+              show: true, alignLeft: true,
+              msg: `【防呆提醒】您還有 ${96 - answeredCount} 題未評核！\n\n🔍 漏評項目提示：\n${displayMissing}${extraMsg}\n\n確定要強制「暫存」並返回首頁嗎？\n(若要繼續評分請按取消)`, 
+              type: 'confirm', onConfirm: () => { saveCurrentToRecords(false); setCurrentView('home'); }
+            });
+          } else { saveCurrentToRecords(true); setCurrentView('home'); }
+        };
+
+        const renderHome = () => (
+          <div className="p-6 max-w-lg mx-auto bg-white min-h-screen">
+            <div className="text-center mb-8 relative">
+              <h1 className="text-3xl font-bold text-blue-800 tracking-wider">護理部評核系統</h1>
+              <p className="text-gray-500 mt-2">請先設定評核基本資料</p>
+            </div>
+            <div className="space-y-5 bg-blue-50 p-6 rounded-2xl shadow-sm border border-blue-100">
+              <div>
+                <label className="block text-gray-700 font-bold mb-2">選擇評分月份</label>
+                <select className="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white" value={baseInfo.month} onChange={(e) => handleBaseInfoChange('month', e.target.value)}>
+                  <option value="">-- 請選擇月份 --</option>{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-700 font-bold mb-2">選擇評分分院</label>
+                <select className="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white" value={baseInfo.branch} onChange={(e) => handleBaseInfoChange('branch', e.target.value)}>
+                  <option value="">-- 請選擇分院 --</option>
+                  {BRANCHES.map(b => {
+                    const allDone = baseInfo.month && NURSE_DATA[b].length > 0 && NURSE_DATA[b].every(n => allRecords[baseInfo.month]?.[b]?.[n]?.isServiceComplete && allRecords[baseInfo.month]?.[b]?.[n]?.isSafetyComplete);
+                    return <option key={b} value={b}>{b} {allDone ? '✅ (全員完核)' : ''}</option>;
+                  })}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-700 font-bold mb-2">選擇受評者 (護理師)</label>
+                <select disabled={!baseInfo.branch} className={`w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white ${!baseInfo.branch ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={baseInfo.nurse} onChange={(e) => handleBaseInfoChange('nurse', e.target.value)}>
+                  <option value="">{baseInfo.branch ? '-- 請選擇受評者 --' : '-- 請先選擇分院 --'}</option>
+                  {baseInfo.branch && NURSE_DATA[baseInfo.branch].map(n => {
+                    const isDone = allRecords[baseInfo.month]?.[baseInfo.branch]?.[n]?.isServiceComplete && allRecords[baseInfo.month]?.[baseInfo.branch]?.[n]?.isSafetyComplete;
+                    return <option key={n} value={n}>{n} {isDone ? '✅ (已完成)' : ''}</option>;
+                  })}
+                </select>
+              </div>
+            </div>
+            <div className="mt-8 space-y-4">
+              <button disabled={!canStartAssessment} onClick={() => navigateTo('service')} className={`w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all ${canStartAssessment ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>進入「服務品質評核」</button>
+              <button disabled={!canStartAssessment} onClick={() => navigateTo('safety')} className={`w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all ${canStartAssessment ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>進入「醫療安全評核」</button>
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <button onClick={() => navigateTo('report')} className="w-full py-4 rounded-xl font-bold text-base bg-indigo-100 text-indigo-800 hover:bg-indigo-200 shadow-sm transition-all">單人獎金報表</button>
+                <button onClick={() => navigateTo('dashboard')} className="w-full py-4 rounded-xl font-bold text-base bg-orange-100 text-orange-800 hover:bg-orange-200 shadow-sm transition-all">📊 全院儀表板</button>
+              </div>
+            </div>
+          </div>
+        );
+
+        const renderServiceQuality = () => {
+          const calculateScore = (roleData) => Object.values(roleData).reduce((sum, val) => sum + (val || 0), 0);
+          return (
+            <div id="service-quality-panel" className="max-w-3xl mx-auto bg-gray-50 min-h-screen pb-24 print:bg-white print:pb-0">
+              <div className="bg-blue-800 text-white p-4 sticky top-0 z-10 shadow-md flex justify-between items-center no-print">
+                <button onClick={() => navigateTo('home')} className="text-sm bg-white/20 px-3 py-1 rounded-lg hover:bg-white/30 transition">返回</button>
+                <h2 className="font-bold text-lg">服務品質評核</h2>
+                <button onClick={() => window.print()} className="text-sm bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-500 transition shadow-sm font-bold flex items-center gap-1">📄 匯出 PDF</button>
+              </div>
+              <div className="p-4 print:p-0 print:pt-4">
+                <div className="hidden print:block text-center mb-6 border-b-2 border-blue-800 pb-4">
+                  <h1 className="text-2xl font-bold text-gray-800">服務品質評核結果報告</h1>
+                  <p className="text-gray-600 mt-2 text-lg">分院：{baseInfo.branch} &nbsp;|&nbsp; 月份：{baseInfo.month} &nbsp;|&nbsp; 護理師：{baseInfo.nurse}</p>
+                </div>
+                <div className="flex bg-white rounded-xl shadow-sm p-1 mb-6 border border-gray-200 no-print">
+                  <button onClick={() => handleRoleSwitch('self')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${authRole === 'self' ? 'bg-blue-100 text-blue-800' : 'text-gray-500'}`}>1. 同仁自評 {serviceSignatures.selfSubmitted && <span className="text-green-500 ml-1">✅</span>}</button>
+                  <button onClick={() => handleRoleSwitch('manager')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${authRole === 'manager' ? 'bg-blue-100 text-blue-800' : 'text-gray-500'}`}>2. 主管評核 {serviceSignatures.managerSubmitted && <span className="text-green-500 ml-1">✅</span>}</button>
+                  <button onClick={() => handleRoleSwitch('storeManager')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${authRole === 'storeManager' ? 'bg-blue-100 text-blue-800' : 'text-gray-500'}`}>3. 店經理核決 {serviceSignatures.storeManagerSubmitted && <span className="text-green-500 ml-1">✅</span>}</button>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm p-4 mb-4 flex justify-between items-center border-l-4 border-blue-500 print:shadow-none print:border-gray-300">
+                  <div>
+                    <p className="text-sm text-gray-500">目前評核身分</p>
+                    <p className="font-bold text-lg text-blue-800">{authRole === 'self' ? '同仁自評' : authRole === 'manager' ? '主管評核 (主任/護理長)' : '店經理(職代)核決 (最終分數)'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">目前總分</p>
+                    <p className="font-bold text-3xl text-blue-600">{calculateScore(serviceData[authRole])}<span className="text-lg text-gray-400">/10</span></p>
+                  </div>
+                </div>
+                <div className="space-y-4 print:space-y-2">
+                  {SERVICE_QUESTIONS.map((q) => {
+                    const isChecked = serviceData[authRole][q.id] === 1;
+                    return (
+                      <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 print:border-gray-300 print:shadow-none print:break-inside-avoid">
+                        <h3 className="font-bold text-gray-800">{q.title}</h3>
+                        <p className="text-sm text-gray-500 mt-1 mb-4 print:mb-2">{q.desc}</p>
+                        {authRole !== 'self' && (
+                          <div className="flex gap-2 mb-3 text-xs">
+                            {authRole === 'storeManager' && <span className={`px-2 py-1 rounded ${serviceData.self[q.id] ? 'bg-green-50 text-green-700 font-bold' : 'bg-gray-100 text-gray-400'}`}>自評: {serviceData.self[q.id] ? '達標' : '未達'}</span>}
+                            {(authRole === 'manager' || authRole === 'storeManager') && <span className={`px-2 py-1 rounded ${serviceData.manager[q.id] ? 'bg-green-50 text-green-700 font-bold' : 'bg-gray-100 text-gray-400'}`}>主管: {serviceData.manager[q.id] ? '達標' : '未達'}</span>}
+                          </div>
+                        )}
+                        <button onClick={() => setServiceData(prev => ({ ...prev, [authRole]: { ...prev[authRole], [q.id]: isChecked ? 0 : 1 } }))} className={`w-full py-3 rounded-lg font-bold border-2 transition-all flex items-center justify-center gap-2 ${isChecked ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-400 hover:border-blue-300'} print:py-2 print:border`}>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isChecked ? 'border-blue-500 bg-blue-500' : 'border-gray-300'}`}>
+                            {isChecked && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
+                          </div>
+                          {isChecked ? '已達標 (獲得 1 分)' : '點擊設定為達標'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mt-6 mb-8 print:shadow-none print:break-inside-avoid">
+                  <h3 className="font-bold text-gray-800 mb-4 border-b border-gray-100 pb-2">✍️ 評核簽核區</h3>
+                  {authRole === 'self' && (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center gap-4"><label className="text-sm font-bold text-gray-600">自評日期</label><input type="date" value={serviceSignatures.selfDate} onChange={e => setServiceSignatures({...serviceSignatures, selfDate: e.target.value})} className="border border-gray-300 rounded-lg p-2 flex-1 print:border-none" /></div>
+                      <button onClick={() => { setServiceSignatures({...serviceSignatures, selfSubmitted: true}); setSysModal({show:true, msg:'自評已送出', type:'alert'}); }} className={`py-3 rounded-lg font-bold text-white shadow-sm no-print ${serviceSignatures.selfSubmitted ? 'bg-green-500' : 'bg-blue-600'}`}>{serviceSignatures.selfSubmitted ? '✅ 自評已確認送出' : '確認自評結果並送出'}</button>
+                    </div>
+                  )}
+                  {authRole === 'manager' && (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center gap-4"><label className="text-sm font-bold text-gray-600 w-16">主管姓名</label><input type="text" value={serviceSignatures.managerName} onChange={e => setServiceSignatures({...serviceSignatures, managerName: e.target.value})} className="border border-gray-300 rounded-lg p-2 flex-1 print:border-none" /></div>
+                      <div className="flex items-center gap-4"><label className="text-sm font-bold text-gray-600 w-16">評核日期</label><input type="date" value={serviceSignatures.managerDate} onChange={e => setServiceSignatures({...serviceSignatures, managerDate: e.target.value})} className="border border-gray-300 rounded-lg p-2 flex-1 print:border-none" /></div>
+                      <button onClick={() => { setServiceSignatures({...serviceSignatures, managerSubmitted: true}); setSysModal({show:true, msg:'主管評核已送出', type:'alert'}); }} className={`py-3 rounded-lg font-bold text-white shadow-sm no-print ${serviceSignatures.managerSubmitted ? 'bg-green-500' : 'bg-blue-600'}`}>{serviceSignatures.managerSubmitted ? '✅ 主管評核已送出' : '確認主管評核並送出'}</button>
+                    </div>
+                  )}
+                  {authRole === 'storeManager' && (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center gap-4"><label className="text-sm font-bold text-gray-600 w-20">店經理姓名</label><input type="text" value={serviceSignatures.storeManagerName} onChange={e => setServiceSignatures({...serviceSignatures, storeManagerName: e.target.value})} className="border border-gray-300 rounded-lg p-2 flex-1 print:border-none" /></div>
+                      <div className="flex items-center gap-4"><label className="text-sm font-bold text-gray-600 w-20">核決日期</label><input type="date" value={serviceSignatures.storeManagerDate} onChange={e => setServiceSignatures({...serviceSignatures, storeManagerDate: e.target.value})} className="border border-gray-300 rounded-lg p-2 flex-1 print:border-none" /></div>
+                      <div className="mt-2 border-t pt-3 print:pt-4"><label className="text-sm font-bold text-gray-600 block mb-2">📝 總結評語</label><textarea rows="3" value={serviceSignatures.storeManagerComment} onChange={e => setServiceSignatures({...serviceSignatures, storeManagerComment: e.target.value})} className="w-full border border-gray-300 rounded-lg p-3 resize-none print:border-none"></textarea></div>
+                      <button onClick={() => { setServiceSignatures({...serviceSignatures, storeManagerSubmitted: true}); setSysModal({show:true, msg:'店經理核決已送出', type:'alert'}); }} className={`py-3 rounded-lg font-bold text-white shadow-sm no-print ${serviceSignatures.storeManagerSubmitted ? 'bg-green-500' : 'bg-indigo-600'}`}>{serviceSignatures.storeManagerSubmitted ? '✅ 店經理核決已送出' : '確認店經理核決並送出'}</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="fixed bottom-0 w-full max-w-3xl bg-white border-t p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex gap-3 no-print z-30">
+                 <button onClick={() => saveCurrentToRecords(true)} className="w-1/3 bg-blue-50 text-blue-800 font-bold py-3 rounded-xl shadow-sm border border-blue-200">暫存進度</button>
+                 <button onClick={() => { saveCurrentToRecords(false); setCurrentView('home'); }} className="w-2/3 bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg">儲存並返回首頁</button>
+              </div>
+            </div>
+          );
+        };
+
+        const renderMedicalSafety = () => {
+          const isSafetyDisabled = safetyMode === 'view' && !isSuperAdmin;
+          let answeredCount = 0;
+          SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => cat.items.forEach(item => { if (safetyData[item.id]) answeredCount++; })));
+
+          return (
+            <div className="max-w-3xl mx-auto bg-gray-50 min-h-screen pb-24 relative">
+              <div className="bg-emerald-700 text-white p-4 sticky top-0 z-20 shadow-md flex justify-between items-center">
+                <button onClick={() => navigateTo('home')} className="text-sm bg-white/20 px-3 py-1 rounded-lg">返回</button>
+                <div className="text-center">
+                   <h2 className="font-bold text-lg leading-tight">醫療安全評核</h2>
+                   <span className="text-xs text-emerald-200">受評：{baseInfo.nurse}</span>
+                </div>
+                <div className="text-right flex flex-col items-end">
+                   <div className="text-sm text-white font-bold mb-1 tracking-wide">護理長稽核</div>
+                   <select disabled={isSafetyDisabled} value={safetySignatures.headNurseName} onChange={e => setSafetySignatures({...safetySignatures, headNurseName: e.target.value})} className={`w-28 px-2 py-1.5 text-sm text-emerald-900 font-bold rounded bg-white ${isSafetyDisabled ? 'opacity-70 border-gray-300' : 'border-2 border-emerald-300'}`}>
+                     <option value="">- 請選擇 -</option>{HEAD_NURSES.map(nurse => <option key={nurse} value={nurse}>{nurse}</option>)}
+                   </select>
+                </div>
+              </div>
+
+              <div className="fixed right-0 top-1/4 flex flex-col gap-2 z-40 bg-white/90 p-2 rounded-l-xl shadow-lg backdrop-blur-sm border border-r-0 border-emerald-200 no-print">
+                 <div className="text-xs font-bold text-gray-500 mb-1 text-center">快捷導航</div>
+                 {SAFETY_SECTIONS.map((sec, idx) => (
+                   <button key={idx} onClick={() => document.getElementById(sec.id).scrollIntoView({behavior: 'smooth', block: 'start'})} className="bg-emerald-50 text-emerald-700 text-xs font-bold py-2 px-1 rounded border border-emerald-200">{SAFETY_QUICK_NAV[idx]}</button>
+                 ))}
+              </div>
+
+              {isSafetyDisabled && (
+                <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 flex justify-between items-center mx-4 mt-4 rounded shadow-sm">
+                  <div><h3 className="font-bold text-yellow-800 text-sm">目前為檢視模式</h3><p className="text-xs text-yellow-700 mt-1">此表單僅限護理長評核，點擊右方可解鎖。</p></div>
+                  <button onClick={handleSafetyUnlock} className="bg-yellow-500 text-white font-bold px-4 py-2 rounded text-sm">🔒 護理長解鎖</button>
+                </div>
+              )}
+
+              <div className="p-4">
+                <div className={`bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4 border-emerald-500 ${isSafetyDisabled ? 'opacity-80' : ''}`}>
+                   <div className="flex items-center gap-2 mb-2">
+                     <h3 className="font-bold text-gray-800">評核說明</h3>
+                     <button onClick={() => setShowSopModal(true)} className="text-emerald-600 bg-emerald-50 rounded-full p-1"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+                   </div>
+                   <ul className="text-sm text-gray-600 space-y-1 list-disc pl-5">
+                     <li>標示 <span className="text-red-500 font-bold">🔴 絕對紅字</span> 的項目，只要有一項不合格，本月安全獎金即為 0 元。</li>
+                     <li>黑字項目不合格超過 5 個，獎金亦為 0 元。</li>
+                   </ul>
+                   <div className="mt-4 pt-3 border-t text-sm font-bold flex justify-between"><span className={`${answeredCount < 96 ? 'text-red-500' : 'text-emerald-600'}`}>完成度: {answeredCount}/96</span></div>
+                </div>
+
+                <div className="space-y-6">
+                  {SAFETY_SECTIONS.map((section, sIndex) => (
+                    <div id={section.id} key={sIndex} className={`bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 scroll-mt-20 ${isSafetyDisabled ? 'opacity-70 pointer-events-none' : ''}`}>
+                      <div className="bg-gray-700 p-3 text-white flex justify-between items-center flex-wrap gap-2">
+                        <div className="font-bold text-lg flex-1">{section.title}</div>
+                        <div className="flex items-center gap-2 bg-gray-600/50 px-2 py-1 rounded">
+                          <label className="text-xs text-gray-300">評核日期</label>
+                          <input type="date" value={safetySignatures.sectionDates[sIndex] || ''} onChange={e => setSafetySignatures({...safetySignatures, sectionDates: {...safetySignatures.sectionDates, [sIndex]: e.target.value}})} className="border-none rounded px-1.5 py-1 text-xs text-gray-900 bg-gray-100" />
+                        </div>
+                      </div>
+                      {section.categories.map((category, cIndex) => (
+                        <div key={cIndex} className="border-t border-gray-200">
+                          <div className="bg-gray-100 p-2 px-4 font-bold text-gray-700 border-b border-gray-200">{category.title}</div>
+                          <div className="divide-y divide-gray-100">
+                            {category.items.map(item => {
+                              const status = safetyData[item.id];
+                              return (
+                                <div key={item.id} className="p-4">
+                                  <div className="flex items-start gap-2 mb-3">
+                                    {item.isRed && <span className="text-red-500 text-xs mt-1">🔴</span>}
+                                    <p className={`text-base font-medium ${item.isRed ? 'text-red-700 font-bold' : 'text-gray-800'}`}>{item.text}</p>
+                                  </div>
+                                  <div className="flex gap-3 pr-14 md:pr-0"> 
+                                    <button onClick={() => !isSafetyDisabled && setSafetyData(prev => ({ ...prev, [item.id]: 'pass' }))} className={`flex-1 py-3 rounded-lg font-bold border-2 flex justify-center items-center gap-2 ${status === 'pass' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>合格</button>
+                                    <button onClick={() => !isSafetyDisabled && setSafetyData(prev => ({ ...prev, [item.id]: 'fail' }))} className={`flex-1 py-3 rounded-lg font-bold border-2 flex justify-center items-center gap-2 ${status === 'fail' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>不合格</button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="fixed bottom-0 w-full max-w-3xl bg-white border-t p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex gap-3 z-30 no-print">
+                 <button disabled={isSafetyDisabled} onClick={() => saveCurrentToRecords(true)} className={`w-1/3 font-bold py-3 rounded-xl border ${isSafetyDisabled ? 'bg-gray-100 text-gray-400' : 'bg-emerald-50 text-emerald-800'}`}>暫存進度</button>
+                 <button onClick={handleSafetySaveAndReturn} className="w-2/3 bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg">{isSafetyDisabled ? '返回首頁' : '確認儲存並返回首頁'}</button>
+              </div>
+            </div>
+          );
+        };
+
+        const renderDashboard = () => (
+          <div className="max-w-5xl mx-auto bg-gray-50 min-h-screen p-6">
+            <div className="flex justify-between items-center mb-6">
+              <button onClick={() => navigateTo('home')} className="flex items-center text-gray-500 font-bold">返回首頁</button>
+              <div className="flex gap-2">
+                <button onClick={() => captureScreenshot('dashboard-panel', `全院儀表板_${dashMonth}`)} className="bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg text-sm">📸 儲存圖片</button>
+                <button onClick={exportDashboardToExcel} className="bg-green-600 text-white font-bold px-3 py-1.5 rounded-lg text-sm">📊 匯出 Excel</button>
+              </div>
+            </div>
+            <div id="dashboard-panel" className="bg-white rounded-2xl shadow-md border border-gray-100 pb-4">
+              <div className="bg-orange-500 p-6 text-white text-center">
+                 <h2 className="text-2xl font-bold tracking-widest mb-3">全院評核進度儀表板</h2>
+                 <div className="inline-flex items-center bg-white/20 px-4 py-2 rounded-full no-print">
+                   <label className="mr-2 font-bold">切換月份:</label>
+                   <select value={dashMonth} onChange={(e) => setDashMonth(e.target.value)} className="text-gray-800 font-bold px-2 py-1 rounded outline-none">{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select>
+                 </div>
+                 <div className="hidden print:block font-bold mt-2">月份: {dashMonth}</div>
+              </div>
+              <div className="p-6 overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead><tr className="bg-gray-100 text-gray-600 text-sm"><th className="p-3 border-b font-bold">分院</th><th className="p-3 border-b font-bold">護理師</th><th className="p-3 border-b text-center font-bold">服務評核</th><th className="p-3 border-b text-center font-bold">安全評核</th><th className="p-3 border-b text-center font-bold">狀態</th><th className="p-3 border-b text-right text-orange-600 font-bold">達成總獎金</th></tr></thead>
+                  <tbody>
+                    {BRANCHES.map((branch) => NURSE_DATA[branch].map((nurse, nIdx) => {
+                        const rec = allRecords[dashMonth]?.[branch]?.[nurse];
+                        const isSrvDone = !!rec?.isServiceComplete; const isSafDone = !!rec?.isSafetyComplete;
+                        const isCalculated = isSrvDone && isSafDone; 
+                        return (
+                          <tr key={`${branch}-${nurse}`} className="border-b hover:bg-gray-50">
+                            {nIdx === 0 && <td rowSpan={NURSE_DATA[branch].length} className="p-3 font-bold border-r">{branch}</td>}
+                            <td className="p-3 text-gray-800">{nurse}</td>
+                            <td className="p-3 text-center">{isSrvDone ? '✅' : '❌'}</td>
+                            <td className="p-3 text-center">{isSafDone ? '✅' : '❌'}</td>
+                            <td className="p-3 text-center">{isCalculated ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">已完成</span> : <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold">未完成</span>}</td>
+                            <td className="p-3 text-right font-bold">{isCalculated ? <span className="text-orange-600">${calculateBonus(rec).total}</span> : <span className="text-gray-300">-</span>}</td>
+                          </tr>
+                        )
+                    }))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+
+        const renderReport = () => {
+          const targetRecord = allRecords[reportFilter.month]?.[reportFilter.branch]?.[reportFilter.nurse];
+          const bonusInfo = calculateBonus(targetRecord);
+          let finalServiceScore = 0; let redFailCount = 0; let blackFailCount = 0;
+          if (targetRecord) {
+            finalServiceScore = Object.values(targetRecord.serviceData?.storeManager || {}).reduce((sum, val) => sum + (val || 0), 0);
+            SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => cat.items.forEach(item => {
+              if (targetRecord.safetyData?.[item.id] === 'fail') { if (item.isRed) redFailCount++; else blackFailCount++; }
+            })));
+          }
+
+          return (
+            <div className="max-w-xl mx-auto bg-gray-50 min-h-screen p-6 pb-20">
+               <div className="flex justify-between items-center mb-6">
+                 <button onClick={() => navigateTo('home')} className="flex items-center text-gray-500 font-bold">返回首頁</button>
+                 <button onClick={() => captureScreenshot('report-panel', `獎金報表_${reportFilter.nurse}`)} className="bg-indigo-600 text-white font-bold px-3 py-1.5 rounded-lg text-sm">📸 儲存圖片</button>
+               </div>
+               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-wrap gap-3">
+                  <div className="flex-1 min-w-[120px]"><label className="text-xs text-gray-500 font-bold">月份</label><select value={reportFilter.month} onChange={e => setReportFilter({...reportFilter, month: e.target.value, branch: '', nurse: ''})} className="w-full border p-2 rounded text-sm bg-gray-50">{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+                  <div className="flex-1 min-w-[120px]"><label className="text-xs text-gray-500 font-bold">分院</label><select value={reportFilter.branch} onChange={e => setReportFilter({...reportFilter, branch: e.target.value, nurse: ''})} className="w-full border p-2 rounded text-sm bg-gray-50"><option value="">選擇分院</option>{BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
+                  <div className="flex-1 min-w-[120px]"><label className="text-xs text-gray-500 font-bold">護理師</label><select disabled={!reportFilter.branch} value={reportFilter.nurse} onChange={e => setReportFilter({...reportFilter, nurse: e.target.value})} className="w-full border p-2 rounded text-sm bg-gray-50"><option value="">選擇人員</option>{reportFilter.branch && NURSE_DATA[reportFilter.branch].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+               </div>
+               {!reportFilter.nurse ? (
+                  <div className="text-center py-20 text-gray-400 font-bold bg-white rounded-2xl shadow-sm border">👆 請從上方選擇您要查詢的分院與人員</div>
+               ) : (
+                 <div id="report-panel" className="bg-white rounded-2xl shadow-md border border-gray-100 mb-6 bg-white animate-fade-in">
+                    <div className="bg-indigo-600 p-6 text-white text-center">
+                       <h2 className="text-2xl font-bold tracking-widest">獎金結算報表</h2>
+                       <p className="opacity-80 mt-1">{reportFilter.branch} - {reportFilter.month}</p>
+                       <div className="mt-4 bg-white/20 inline-block px-6 py-2 rounded-full font-bold text-lg">受評人：{reportFilter.nurse}</div>
+                    </div>
+                    {!targetRecord ? (
+                      <div className="p-10 text-center text-gray-500">該人員本月尚無評核紀錄。</div>
+                    ) : (
+                      <div className="p-6 space-y-6">
+                        <div className="border-b pb-6">
+                          <div className="flex justify-between items-center mb-3"><h3 className="font-bold text-lg text-gray-800"><span className="w-2 h-6 bg-blue-500 rounded-full mr-2 inline-block align-middle"></span>服務品質評核</h3><span className="font-bold text-2xl text-blue-600">{finalServiceScore} <span className="text-sm text-gray-400">分</span></span></div>
+                          <div className="bg-gray-50 p-3 rounded-lg flex justify-between items-center border border-gray-200"><span className="font-bold text-gray-600">發放獎金</span><span className="font-bold text-xl text-indigo-700">NT$ {bonusInfo.serviceBonus}</span></div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between items-center mb-3"><h3 className="font-bold text-lg text-gray-800"><span className="w-2 h-6 bg-emerald-500 rounded-full mr-2 inline-block align-middle"></span>醫療安全評核</h3></div>
+                          <div className="grid grid-cols-2 gap-3 mb-4 text-center">
+                              <div className={`p-3 rounded-lg border ${redFailCount > 0 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-600'}`}><p className="text-xs mb-1">🔴 紅字不合格</p><p className="font-bold text-2xl">{redFailCount}</p></div>
+                              <div className={`p-3 rounded-lg border ${blackFailCount > 5 ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-600'}`}><p className="text-xs mb-1">⚫ 黑字不合格</p><p className="font-bold text-2xl">{blackFailCount}</p></div>
+                          </div>
+                          <div className="bg-gray-50 p-3 rounded-lg flex justify-between items-center border border-gray-200"><span className="font-bold text-gray-600">發放獎金</span><span className="font-bold text-xl text-indigo-700">NT$ {bonusInfo.safetyBonus}</span></div>
+                        </div>
+                      </div>
+                    )}
+                    {targetRecord && (
+                      <div className="bg-indigo-50 p-6 border-t border-indigo-100 flex justify-between items-center"><span className="text-lg font-bold text-indigo-900">總計發放獎金</span><span className="text-3xl font-black text-indigo-600">NT$ {bonusInfo.total}</span></div>
+                    )}
+                 </div>
+               )}
+            </div>
+          );
+        };
+
+        return (
+          <div className="min-h-screen relative">
+            <div className="fixed top-4 right-4 z-50 no-print">
+              <button onClick={handleSuperAdminToggle} className={`px-3 py-1.5 rounded-full text-xs font-bold shadow-md border ${isSuperAdmin ? 'bg-red-600 text-white border-red-700' : 'bg-white text-gray-500 border-gray-300'}`}>
+                {isSuperAdmin ? '👑 總管已登入' : '⚙️ 總管登入'}
+              </button>
+            </div>
+            
+            {currentView === 'home' && renderHome()}
+            {currentView === 'service' && renderServiceQuality()}
+            {currentView === 'safety' && renderMedicalSafety()}
+            {currentView === 'dashboard' && renderDashboard()}
+            {currentView === 'report' && renderReport()}
+
+            {/* 密碼彈窗 */}
+            {showPasswordModal && (
+              <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-fade-in">
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">需要授權</h3>
+                  <p className="text-gray-500 text-sm mb-4">
+                    {pendingRole === 'safetyUnlock' ? '切換至編輯模式需要輸入護理長密碼。' : pendingRole === 'superadmin' ? '請輸入總管理者密碼。' : `切換至「${pendingRole === 'manager' ? '主管評核' : '店經理核決'}」需要密碼。`}
+                    <br/><br/><span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 p-2 rounded block">[測試密碼]<br/>主管: 1234 | 店經理: admin<br/>護理長: headnurse | 總管: superadmin</span>
+                  </p>
+                  <input type="password" placeholder="請輸入密碼" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && confirmPassword()} className="w-full p-3 rounded-lg border focus:ring-2 outline-none mb-4" />
+                  <div className="flex gap-3"><button onClick={() => {setShowPasswordModal(false); setPasswordInput('');}} className="flex-1 py-3 rounded-lg font-bold bg-gray-100 text-gray-600">取消</button><button onClick={confirmPassword} className="flex-1 py-3 rounded-lg font-bold bg-blue-600 text-white">確認解鎖</button></div>
+                </div>
+              </div>
+            )}
+
+            {/* 系統提示彈窗 */}
+            {sysModal.show && (
+              <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-fade-in text-center flex flex-col max-h-[90vh]">
+                  <div className="mb-4 shrink-0 text-4xl">{sysModal.type === 'alert' ? 'ℹ️' : '⚠️'}</div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-2 shrink-0">{sysModal.type === 'alert' ? '系統提示' : '請確認'}</h3>
+                  <div className={`text-gray-600 text-sm mb-6 whitespace-pre-line bg-gray-50 p-3 rounded overflow-y-auto ${sysModal.alignLeft ? 'text-left' : 'text-center'}`}>{sysModal.msg}</div>
+                  <div className="flex gap-3 justify-center shrink-0">
+                    {sysModal.type === 'confirm' && <button onClick={() => setSysModal({show: false})} className="flex-1 py-2.5 rounded-lg font-bold bg-gray-100 text-gray-600">取消</button>}
+                    <button onClick={() => { if (sysModal.onConfirm) sysModal.onConfirm(); setSysModal({show: false}); }} className={`flex-1 py-2.5 rounded-lg font-bold text-white ${sysModal.type === 'confirm' ? 'bg-red-500' : 'bg-blue-600'}`}>確定</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SOP 彈窗 */}
+            {showSopModal && (
+              <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                  <div className="bg-emerald-600 p-4 text-white flex justify-between items-center sticky top-0"><h3 className="font-bold text-lg">醫療安全 SOP</h3><button onClick={() => setShowSopModal(false)} className="bg-emerald-700/50 rounded-full p-1"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button></div>
+                  <div className="p-6 overflow-y-auto space-y-5">{MEDICAL_SOP.map((sop, idx) => (<div key={idx}><h4 className="font-bold text-emerald-800 mb-1 border-b border-emerald-100 pb-1">{sop.title}</h4><p className="text-sm text-gray-600 whitespace-pre-line">{sop.content}</p></div>))}</div>
+                  <div className="p-4 border-t bg-gray-50"><button onClick={() => setShowSopModal(false)} className="w-full py-2.5 rounded-lg font-bold bg-emerald-600 text-white">了解並關閉</button></div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    };
+
+    // 確保 Firebase 載入完成後再初始化 React
+    if (window.FirebaseAPI) {
+      initApp();
+    } else {
+      window.addEventListener('firebaseLoaded', initApp);
+    }
+  </script>
+</body>
+</html>
