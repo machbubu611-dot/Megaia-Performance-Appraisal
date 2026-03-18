@@ -261,6 +261,9 @@
         const [sysModal, setSysModal] = useState({ show: false, msg: '', type: 'alert', onConfirm: null, alignLeft: false });
         const [reportFilter, setReportFilter] = useState({ month: DEFAULT_MONTH, branch: '', nurse: '' });
         const [dashMonth, setDashMonth] = useState(DEFAULT_MONTH);
+        
+        // 新增：快捷導航面板狀態
+        const [isQuickNavOpen, setIsQuickNavOpen] = useState(false);
 
         const captureScreenshot = (elementId, fileName) => {
           const el = document.getElementById(elementId);
@@ -283,7 +286,6 @@
         };
 
         const exportDashboardToExcel = () => {
-          // 更新匯出欄位：加入各別的獎金明細
           let csvContent = '\uFEFF分院,護理師,服務品質評核,醫療安全評核,總狀態,服務評核獎金(NT$),安全評核獎金(NT$),達成總獎金(NT$)\n';
           BRANCHES.forEach(branch => {
             NURSE_DATA[branch].forEach(nurse => {
@@ -384,7 +386,10 @@
 
         const navigateTo = (view) => {
           if (['service', 'safety'].includes(currentView)) saveCurrentToRecords(false); 
-          if (view === 'safety') setSafetyMode(isSuperAdmin ? 'edit' : 'view');
+          if (view === 'safety') {
+            setSafetyMode(isSuperAdmin ? 'edit' : 'view');
+            setIsQuickNavOpen(false); // 重置導航為關閉狀態
+          }
           if (view === 'report') setReportFilter({ month: baseInfo.month || DEFAULT_MONTH, branch: baseInfo.branch, nurse: baseInfo.nurse });
           setCurrentView(view);
         };
@@ -441,6 +446,68 @@
               type: 'confirm', onConfirm: () => { saveCurrentToRecords(false); setCurrentView('home'); }
             });
           } else { saveCurrentToRecords(true); setCurrentView('home'); }
+        };
+
+        const handleResetAssessment = (type) => {
+          setSysModal({
+            show: true,
+            msg: `確定要重置【${type === 'service' ? '服務品質' : '醫療安全'}】評核嗎？\n此操作將清空該表單的所有分數與簽核紀錄，且無法復原！`,
+            type: 'confirm',
+            alignLeft: false,
+            onConfirm: async () => {
+              const { month, branch, nurse } = baseInfo;
+
+              let newServiceData = serviceData;
+              let newServiceSigs = serviceSignatures;
+              let newSafetyData = safetyData;
+              let newSafetySigs = safetySignatures;
+              
+              let newIsSrvComplete = !!serviceSignatures.storeManagerSubmitted;
+              let safetyAnsweredCount = 0;
+              SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => safetyAnsweredCount += cat.items.filter(i => safetyData[i.id]).length));
+              let newIsSafComplete = safetySignatures.headNurseName !== '' && safetyAnsweredCount === 96;
+
+              if (type === 'service') {
+                newServiceData = getEmptyRecord().serviceData;
+                newServiceSigs = getEmptyRecord().serviceSignatures;
+                setServiceData(newServiceData);
+                setServiceSignatures(newServiceSigs);
+                setAuthRole('self');
+                newIsSrvComplete = false;
+              } else if (type === 'safety') {
+                newSafetyData = {};
+                newSafetySigs = getEmptyRecord().safetySignatures;
+                setSafetyData(newSafetyData);
+                setSafetySignatures(newSafetySigs);
+                newIsSafComplete = false;
+              }
+
+              const recordData = {
+                month, branch, nurse,
+                serviceData: newServiceData,
+                serviceSignatures: newServiceSigs,
+                safetyData: newSafetyData,
+                safetySignatures: newSafetySigs,
+                isServiceComplete: newIsSrvComplete,
+                isSafetyComplete: newIsSafComplete
+              };
+
+              const updatedRecords = { ...allRecords };
+              if (!updatedRecords[month]) updatedRecords[month] = {};
+              if (!updatedRecords[month][branch]) updatedRecords[month][branch] = {};
+              updatedRecords[month][branch][nurse] = recordData;
+              setAllRecords(updatedRecords);
+
+              if (db && user) {
+                try {
+                  await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData);
+                  setTimeout(() => {
+                    setSysModal({ show: true, msg: '✅ 已成功重置該評核表單！', type: 'alert' });
+                  }, 100);
+                } catch (e) { console.error(e); }
+              }
+            }
+          });
         };
 
         const renderHome = () => (
@@ -503,7 +570,14 @@
               <div className="bg-blue-800 text-white p-4 sticky top-0 z-10 shadow-md flex justify-between items-center no-print">
                 <button onClick={() => navigateTo('home')} className="text-sm bg-white/20 px-3 py-1 rounded-lg hover:bg-white/30 transition">返回</button>
                 <h2 className="font-bold text-lg">服務品質評核</h2>
-                <button onClick={() => window.print()} className="text-sm bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-500 transition shadow-sm font-bold flex items-center gap-1">📄 匯出 PDF</button>
+                <div className="flex gap-2">
+                   {isSuperAdmin && (
+                     <button onClick={() => handleResetAssessment('service')} className="text-sm bg-red-600 px-3 py-1 rounded-lg hover:bg-red-500 transition shadow-sm font-bold flex items-center gap-1">
+                       🔄 重置表單
+                     </button>
+                   )}
+                   <button onClick={() => window.print()} className="text-sm bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-500 transition shadow-sm font-bold flex items-center gap-1">📄 匯出 PDF</button>
+                </div>
               </div>
               <div className="p-4 print:p-0 print:pt-4">
                 <div className="hidden print:block text-center mb-6 border-b-2 border-blue-800 pb-4">
@@ -591,7 +665,14 @@
           return (
             <div className="max-w-3xl mx-auto bg-gray-50 min-h-screen pb-24 relative">
               <div className="bg-emerald-700 text-white p-4 sticky top-0 z-20 shadow-md flex justify-between items-center">
-                <button onClick={() => navigateTo('home')} className="text-sm bg-white/20 px-3 py-1 rounded-lg">返回</button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => navigateTo('home')} className="text-sm bg-white/20 px-3 py-1 rounded-lg">返回</button>
+                  {isSuperAdmin && (
+                    <button onClick={() => handleResetAssessment('safety')} className="text-sm bg-red-500 text-white px-3 py-1 rounded-lg hover:bg-red-400 transition shadow-sm font-bold flex items-center gap-1 no-print">
+                      🔄 重置
+                    </button>
+                  )}
+                </div>
                 <div className="text-center">
                    <h2 className="font-bold text-lg leading-tight">醫療安全評核</h2>
                    <span className="text-xs text-emerald-200">受評：{baseInfo.nurse}</span>
@@ -604,11 +685,36 @@
                 </div>
               </div>
 
-              <div className="fixed right-0 top-1/4 flex flex-col gap-2 z-40 bg-white/90 p-2 rounded-l-xl shadow-lg backdrop-blur-sm border border-r-0 border-emerald-200 no-print">
-                 <div className="text-xs font-bold text-gray-500 mb-1 text-center">快捷導航</div>
-                 {SAFETY_SECTIONS.map((sec, idx) => (
-                   <button key={idx} onClick={() => document.getElementById(sec.id).scrollIntoView({behavior: 'smooth', block: 'start'})} className="bg-emerald-50 text-emerald-700 text-xs font-bold py-2 px-1 rounded border border-emerald-200">{SAFETY_QUICK_NAV[idx]}</button>
-                 ))}
+              {/* 🌟 改善：可展開與收合的側邊快捷導航 */}
+              <div className={`fixed right-0 top-1/4 z-40 transition-transform duration-300 flex no-print ${isQuickNavOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+                 {/* 開關按鈕 (靠左凸出) */}
+                 <div 
+                   onClick={() => setIsQuickNavOpen(!isQuickNavOpen)}
+                   className="absolute -left-8 top-4 bg-emerald-600 hover:bg-emerald-700 text-white w-8 py-3 rounded-l-lg shadow-lg cursor-pointer flex flex-col items-center justify-center text-xs font-bold gap-1 border border-r-0 border-emerald-700 transition-colors"
+                 >
+                   {isQuickNavOpen ? (
+                     <React.Fragment><span>▶</span><span>收</span><span>起</span></React.Fragment>
+                   ) : (
+                     <React.Fragment><span>◀</span><span>導</span><span>航</span></React.Fragment>
+                   )}
+                 </div>
+                 
+                 {/* 導航內容面板 */}
+                 <div className="bg-white/95 p-2 rounded-bl-xl shadow-lg backdrop-blur-sm border border-r-0 border-emerald-200 flex flex-col gap-2 min-w-[100px]">
+                   <div className="text-xs font-bold text-gray-500 mb-1 text-center border-b border-gray-200 pb-1">快捷導航</div>
+                   {SAFETY_SECTIONS.map((sec, idx) => (
+                     <button 
+                       key={idx} 
+                       onClick={() => {
+                          document.getElementById(sec.id).scrollIntoView({behavior: 'smooth', block: 'start'});
+                          setIsQuickNavOpen(false); // 點擊跳轉後自動收起導航
+                       }} 
+                       className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold py-2 px-2 rounded shadow-sm border border-emerald-200 text-center transition whitespace-nowrap"
+                     >
+                       {SAFETY_QUICK_NAV[idx]}
+                     </button>
+                   ))}
+                 </div>
               </div>
 
               {isSafetyDisabled && (
@@ -654,7 +760,7 @@
                                     {item.isRed && <span className="text-red-500 text-xs mt-0.5 shrink-0">🔴</span>}
                                     <p className={`text-sm font-medium leading-snug ${item.isRed ? 'text-red-700 font-bold' : 'text-gray-800'}`}>{item.text}</p>
                                   </div>
-                                  <div className="flex gap-2 shrink-0 pr-12 md:pr-0"> 
+                                  <div className="flex gap-2 shrink-0 pr-8 md:pr-0"> 
                                     <button onClick={() => !isSafetyDisabled && setSafetyData(prev => ({ ...prev, [item.id]: 'pass' }))} className={`px-4 py-1.5 rounded-md font-bold border-2 transition-all flex justify-center items-center text-sm whitespace-nowrap ${status === 'pass' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>合格</button>
                                     <button onClick={() => !isSafetyDisabled && setSafetyData(prev => ({ ...prev, [item.id]: 'fail' }))} className={`px-4 py-1.5 rounded-md font-bold border-2 transition-all flex justify-center items-center text-sm whitespace-nowrap ${status === 'fail' ? 'bg-red-50 border-red-500 text-red-700 shadow-sm' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>不合格</button>
                                   </div>
@@ -832,11 +938,14 @@
 
         return (
           <div className="min-h-screen relative">
-            <div className="fixed top-4 right-4 z-50 no-print">
-              <button onClick={handleSuperAdminToggle} className={`px-3 py-1.5 rounded-full text-xs font-bold shadow-md border ${isSuperAdmin ? 'bg-red-600 text-white border-red-700' : 'bg-white text-gray-500 border-gray-300'}`}>
-                {isSuperAdmin ? '👑 總管已登入' : '⚙️ 總管登入'}
-              </button>
-            </div>
+            {/* 只在首頁顯示總管登入按鈕，避免擋住其他頁面的功能 */}
+            {currentView === 'home' && (
+              <div className="fixed top-4 right-4 z-50 no-print animate-fade-in">
+                <button onClick={handleSuperAdminToggle} className={`px-3 py-1.5 rounded-full text-xs font-bold shadow-md border transition-colors ${isSuperAdmin ? 'bg-red-600 text-white border-red-700' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'}`}>
+                  {isSuperAdmin ? '👑 總管已登入' : '⚙️ 總管登入'}
+                </button>
+              </div>
+            )}
             
             {currentView === 'home' && renderHome()}
             {currentView === 'service' && renderServiceQuality()}
