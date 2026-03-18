@@ -8,7 +8,7 @@
   <!-- 載入 Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- 載入 React 與 Babel (讓瀏覽器直接看懂 React 語法) -->
+  <!-- 載入 React 與 Babel -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -23,7 +23,6 @@
     .animate-fade-in { animation: fadeIn 0.2s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     
-    /* 列印與產出 PDF 用 CSS */
     @media print {
       body * { visibility: hidden; }
       .no-print { display: none !important; }
@@ -71,6 +70,14 @@
       const auth = getAuth(app);
       const db = getFirestore(app);
       const appId = 'megaia-appraisal';
+
+      // --- 預設系統密碼定義 ---
+      const DEFAULT_PASSWORDS = {
+        superadmin: 'admin',
+        manager: '1357',
+        storeManager: 'megaia',
+        safetyUnlock: 'headnurse'
+      };
 
       // --- 1. 資料庫定義 ---
       const BRANCHES = ['台北仁愛', '桃園中正', '新竹光明', '台中向上', '台中崇德', '高雄巨蛋'];
@@ -195,8 +202,12 @@
         const [currentView, setCurrentView] = useState('home'); 
         const [user, setUser] = useState(null);
         const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-        const [allRecords, setAllRecords] = useState({});
+        
+        // 系統動態密碼管理
+        const [passwords, setPasswords] = useState(DEFAULT_PASSWORDS);
+        const [editingPasswords, setEditingPasswords] = useState(DEFAULT_PASSWORDS);
 
+        const [allRecords, setAllRecords] = useState({});
         const [baseInfo, setBaseInfo] = useState({ branch: '', month: '', nurse: '' });
         const [serviceData, setServiceData] = useState(getEmptyRecord().serviceData);
         const [serviceSignatures, setServiceSignatures] = useState(getEmptyRecord().serviceSignatures);
@@ -263,8 +274,9 @@
 
         useEffect(() => {
           if (!user || !db) return;
+          // 監聽評核紀錄
           const collRef = collection(db, 'artifacts', appId, 'public', 'data', 'assessments');
-          const unsubscribe = onSnapshot(collRef, (snapshot) => {
+          const unsubscribeRecords = onSnapshot(collRef, (snapshot) => {
             const newRecords = {};
             snapshot.forEach(docSnap => {
               const data = docSnap.data();
@@ -275,7 +287,21 @@
             });
             setAllRecords(newRecords);
           });
-          return () => unsubscribe();
+          
+          // 監聽系統動態密碼
+          const settingsRef = collection(db, 'artifacts', appId, 'public', 'data', 'settings');
+          const unsubscribeSettings = onSnapshot(settingsRef, (snapshot) => {
+            let loadedPasswords = null;
+            snapshot.forEach(docSnap => {
+              if (docSnap.id === 'passwords') loadedPasswords = docSnap.data();
+            });
+            if (loadedPasswords) {
+              setPasswords({ ...DEFAULT_PASSWORDS, ...loadedPasswords });
+              setEditingPasswords({ ...DEFAULT_PASSWORDS, ...loadedPasswords });
+            }
+          });
+
+          return () => { unsubscribeRecords(); unsubscribeSettings(); }
         }, [user]);
 
         const saveCurrentToRecords = async (showSuccessMsg = false) => {
@@ -300,6 +326,16 @@
             catch (e) { console.error(e); }
           }
           if (showSuccessMsg) setSysModal({ show: true, msg: '✅ 評核資料已成功儲存！', type: 'alert' });
+        };
+
+        const handleSavePasswords = async () => {
+          if (!db || !user) return;
+          try {
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'passwords'), editingPasswords);
+            setSysModal({ show: true, msg: '✅ 系統密碼已成功更新並生效！', type: 'alert' });
+          } catch (error) {
+            setSysModal({ show: true, msg: '儲存失敗，請稍後再試。', type: 'alert' });
+          }
         };
 
         const navigateTo = (view) => {
@@ -328,12 +364,12 @@
         const handleRoleSwitch = (role) => { if (role === 'self' || isSuperAdmin) setAuthRole(role); else { setPendingRole(role); setShowPasswordModal(true); } };
         const handleSafetyUnlock = () => { if (isSuperAdmin) setSafetyMode('edit'); else { setPendingRole('safetyUnlock'); setShowPasswordModal(true); } };
         const handleSuperAdminToggle = () => {
-          if (isSuperAdmin) { setIsSuperAdmin(false); setSysModal({ show: true, msg: '已登出總管理者模式。', type: 'alert' }); } 
+          if (isSuperAdmin) { setIsSuperAdmin(false); setSysModal({ show: true, msg: '已登出總管理者模式。', type: 'alert' }); setCurrentView('home'); } 
           else { setPendingRole('superadmin'); setShowPasswordModal(true); }
         };
 
         const confirmPassword = () => {
-          const passwords = { manager: '1234', storeManager: 'admin', safetyUnlock: 'headnurse', superadmin: 'superadmin' };
+          // 使用動態密碼驗證
           if (passwordInput === passwords[pendingRole]) {
             if (pendingRole === 'safetyUnlock') setSafetyMode('edit');
             else if (pendingRole === 'superadmin') { setIsSuperAdmin(true); if (currentView === 'safety') setSafetyMode('edit'); } 
@@ -347,7 +383,10 @@
           let answeredCount = 0; let missingItemsList = []; 
           SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => cat.items.forEach(item => {
             if (safetyData[item.id]) answeredCount++;
-            else missingItemsList.push(`📍 【${sec.title.split('.')[1] || sec.title}】> ${cat.title}\n   ❌ ${item.text}`);
+            else {
+              const shortTitle = sec.title.split('.')[1] || sec.title;
+              missingItemsList.push(`📍 【${shortTitle}】> ${cat.title}\n   ❌ ${item.text}`);
+            }
           })));
           
           if (answeredCount < 96) {
@@ -403,6 +442,15 @@
                 <button onClick={() => navigateTo('dashboard')} className="w-full py-4 rounded-xl font-bold text-base bg-orange-100 text-orange-800 hover:bg-orange-200 shadow-sm transition-all">📊 全院儀表板</button>
               </div>
             </div>
+            
+            {/* 總管理者專屬設定按鈕 */}
+            {isSuperAdmin && (
+              <div className="mt-6 pt-6 border-t border-gray-200 text-center">
+                 <button onClick={() => navigateTo('settings')} className="bg-gray-800 text-white font-bold py-3 px-6 rounded-xl shadow-md hover:bg-gray-900 transition-all flex items-center justify-center gap-2 w-full">
+                   ⚙️ 系統權限與密碼設定
+                 </button>
+              </div>
+            )}
           </div>
         );
 
@@ -685,6 +733,44 @@
           );
         };
 
+        // --- 畫面渲染：6. 密碼設定面板 (總管理專用) ---
+        const renderSettings = () => (
+          <div className="max-w-xl mx-auto bg-gray-50 min-h-screen p-6 pb-20">
+             <div className="flex justify-between items-center mb-6">
+               <button onClick={() => navigateTo('home')} className="flex items-center text-gray-500 font-bold">返回首頁</button>
+             </div>
+             <div className="bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 mb-6 bg-white animate-fade-in">
+                <div className="bg-gray-800 p-6 text-white text-center">
+                   <h2 className="text-2xl font-bold tracking-widest">系統權限與密碼設定</h2>
+                   <p className="opacity-80 mt-1">僅限總管理者操作，修改後全院即時生效</p>
+                </div>
+                <div className="p-6 space-y-5">
+                  <div>
+                    <label className="text-sm font-bold text-gray-600 block mb-1">👑 總管理密碼</label>
+                    <input type="text" value={editingPasswords.superadmin} onChange={(e) => setEditingPasswords({...editingPasswords, superadmin: e.target.value})} className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-gray-800 outline-none" />
+                  </div>
+                  <hr/>
+                  <div>
+                    <label className="text-sm font-bold text-gray-600 block mb-1">👩‍⚕️ 主管密碼 (服務品質評核用)</label>
+                    <input type="text" value={editingPasswords.manager} onChange={(e) => setEditingPasswords({...editingPasswords, manager: e.target.value})} className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-gray-600 block mb-1">🏢 店經理密碼 (服務品質核決用)</label>
+                    <input type="text" value={editingPasswords.storeManager} onChange={(e) => setEditingPasswords({...editingPasswords, storeManager: e.target.value})} className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                  <hr/>
+                  <div>
+                    <label className="text-sm font-bold text-gray-600 block mb-1">🛡️ 護理長密碼 (醫療安全評核解鎖用)</label>
+                    <input type="text" value={editingPasswords.safetyUnlock} onChange={(e) => setEditingPasswords({...editingPasswords, safetyUnlock: e.target.value})} className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  </div>
+                </div>
+                <div className="p-4 bg-gray-50 border-t">
+                   <button onClick={handleSavePasswords} className="w-full py-3 rounded-lg font-bold bg-gray-800 text-white shadow hover:bg-gray-900 transition">💾 儲存並更新密碼設定</button>
+                </div>
+             </div>
+          </div>
+        );
+
         return (
           <div className="min-h-screen relative">
             <div className="fixed top-4 right-4 z-50 no-print">
@@ -698,15 +784,16 @@
             {currentView === 'safety' && renderMedicalSafety()}
             {currentView === 'dashboard' && renderDashboard()}
             {currentView === 'report' && renderReport()}
+            {currentView === 'settings' && isSuperAdmin && renderSettings()}
 
-            {/* 密碼彈窗 */}
+            {/* 密碼彈窗 (提示文案已移除測試密碼，以保護資安) */}
             {showPasswordModal && (
               <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-fade-in">
                   <h3 className="text-xl font-bold text-gray-800 mb-2">需要授權</h3>
                   <p className="text-gray-500 text-sm mb-4">
                     {pendingRole === 'safetyUnlock' ? '切換至編輯模式需要輸入護理長密碼。' : pendingRole === 'superadmin' ? '請輸入總管理者密碼。' : `切換至「${pendingRole === 'manager' ? '主管評核' : '店經理核決'}」需要密碼。`}
-                    <br/><br/><span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 p-2 rounded block">[測試密碼]<br/>主管: 1234 | 店經理: admin<br/>護理長: headnurse | 總管: superadmin</span>
+                    <br/><br/><span className="text-xs text-gray-400 block">(若需申請或忘記密碼，請洽總管理處)</span>
                   </p>
                   <input type="password" placeholder="請輸入密碼" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && confirmPassword()} className="w-full p-3 rounded-lg border focus:ring-2 outline-none mb-4" />
                   <div className="flex gap-3"><button onClick={() => {setShowPasswordModal(false); setPasswordInput('');}} className="flex-1 py-3 rounded-lg font-bold bg-gray-100 text-gray-600">取消</button><button onClick={confirmPassword} className="flex-1 py-3 rounded-lg font-bold bg-blue-600 text-white">確認解鎖</button></div>
