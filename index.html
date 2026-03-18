@@ -81,7 +81,30 @@
 
       // --- 1. 資料庫定義 ---
       const BRANCHES = ['台北仁愛', '桃園中正', '新竹光明', '台中向上', '台中崇德', '高雄巨蛋'];
-      const MONTHS = ['2026-01', '2026-02', '2026-03'];
+      
+      // 動態產生月份：從 2026-01 開始，一直到當前的下個月
+      const generateMonths = () => {
+        const months = [];
+        const start = new Date(2026, 0); // 2026年1月
+        const today = new Date();
+        const end = new Date(today.getFullYear(), today.getMonth() + 1, 1); // 算到下個月
+        
+        let current = new Date(start);
+        while (current <= end) {
+          const yyyy = current.getFullYear();
+          const mm = String(current.getMonth() + 1).padStart(2, '0');
+          months.push(`${yyyy}-${mm}`);
+          current.setMonth(current.getMonth() + 1);
+        }
+        return months;
+      };
+      
+      const MONTHS = generateMonths();
+      const DEFAULT_MONTH = (() => {
+        const today = new Date();
+        return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+      })();
+
       const NURSE_DATA = {
         '台北仁愛': ['楊馥華', '林妤辰', '劉玳均'],
         '桃園中正': ['林玉美', '張沛璇', '江謝宜臻', '張思晴'],
@@ -182,17 +205,32 @@
         isSafetyComplete: false
       });
 
+      // --- 全新獎金計分邏輯 ---
       const calculateBonus = (record) => {
         let serviceBonus = 0; let safetyBonus = 0;
         if (record) {
+          // 服務品質：滿分3000，7分(含)以上1500
           const finalServiceScore = Object.values(record.serviceData?.storeManager || {}).reduce((sum, val) => sum + (val || 0), 0);
           if (finalServiceScore === 10) serviceBonus = 3000;
           else if (finalServiceScore >= 7) serviceBonus = 1500;
+          
+          // 醫療安全：紅字任一個0元；全數過關3000元；黑字5個內(含)1500元；超過5個0元
           let redFailCount = 0; let blackFailCount = 0;
           SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => cat.items.forEach(item => {
-            if (record.safetyData?.[item.id] === 'fail') { if (item.isRed) redFailCount++; else blackFailCount++; }
+            if (record.safetyData?.[item.id] === 'fail') { 
+              if (item.isRed) redFailCount++; else blackFailCount++; 
+            }
           })));
-          if (redFailCount > 0) safetyBonus = 0; else if (blackFailCount <= 5) safetyBonus = 1500; 
+
+          if (redFailCount > 0) {
+            safetyBonus = 0; 
+          } else if (blackFailCount === 0) {
+            safetyBonus = 3000; // 無違規完整獎金
+          } else if (blackFailCount <= 5) {
+            safetyBonus = 1500; // 5個以內
+          } else {
+            safetyBonus = 0;
+          }
         }
         return { serviceBonus, safetyBonus, total: serviceBonus + safetyBonus };
       };
@@ -221,8 +259,8 @@
         const [pendingRole, setPendingRole] = useState('');
         const [passwordInput, setPasswordInput] = useState('');
         const [sysModal, setSysModal] = useState({ show: false, msg: '', type: 'alert', onConfirm: null, alignLeft: false });
-        const [reportFilter, setReportFilter] = useState({ month: MONTHS[2], branch: '', nurse: '' });
-        const [dashMonth, setDashMonth] = useState(MONTHS[2]);
+        const [reportFilter, setReportFilter] = useState({ month: DEFAULT_MONTH, branch: '', nurse: '' });
+        const [dashMonth, setDashMonth] = useState(DEFAULT_MONTH);
 
         const captureScreenshot = (elementId, fileName) => {
           const el = document.getElementById(elementId);
@@ -245,16 +283,22 @@
         };
 
         const exportDashboardToExcel = () => {
-          let csvContent = '\uFEFF分院,護理師,服務品質評核,醫療安全評核,總狀態,達成總獎金(NT$)\n';
+          // 更新匯出欄位：加入各別的獎金明細
+          let csvContent = '\uFEFF分院,護理師,服務品質評核,醫療安全評核,總狀態,服務評核獎金(NT$),安全評核獎金(NT$),達成總獎金(NT$)\n';
           BRANCHES.forEach(branch => {
             NURSE_DATA[branch].forEach(nurse => {
               const rec = allRecords[dashMonth]?.[branch]?.[nurse];
               const isSrvDone = !!rec?.isServiceComplete;
               const isSafDone = !!rec?.isSafetyComplete;
+              const isCalculated = isSrvDone && isSafDone;
               const bonusInfo = calculateBonus(rec);
-              const statusStr = (isSrvDone && isSafDone) ? '已完成' : '未完成';
-              const bonusStr = (isSrvDone && isSafDone) ? bonusInfo.total : '';
-              csvContent += `${branch},${nurse},${isSrvDone?'V':'X'},${isSafDone?'V':'X'},${statusStr},${bonusStr}\n`;
+              
+              const statusStr = isCalculated ? '已完成' : '未完成';
+              const srvBonusStr = isCalculated ? bonusInfo.serviceBonus : '';
+              const safBonusStr = isCalculated ? bonusInfo.safetyBonus : '';
+              const totalBonusStr = isCalculated ? bonusInfo.total : '';
+              
+              csvContent += `${branch},${nurse},${isSrvDone?'V':'X'},${isSafDone?'V':'X'},${statusStr},${srvBonusStr},${safBonusStr},${totalBonusStr}\n`;
             });
           });
           const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -341,7 +385,7 @@
         const navigateTo = (view) => {
           if (['service', 'safety'].includes(currentView)) saveCurrentToRecords(false); 
           if (view === 'safety') setSafetyMode(isSuperAdmin ? 'edit' : 'view');
-          if (view === 'report') setReportFilter({ month: baseInfo.month || MONTHS[2], branch: baseInfo.branch, nurse: baseInfo.nurse });
+          if (view === 'report') setReportFilter({ month: baseInfo.month || DEFAULT_MONTH, branch: baseInfo.branch, nurse: baseInfo.nurse });
           setCurrentView(view);
         };
 
@@ -369,7 +413,6 @@
         };
 
         const confirmPassword = () => {
-          // 使用動態密碼驗證
           if (passwordInput === passwords[pendingRole]) {
             if (pendingRole === 'safetyUnlock') setSafetyMode('edit');
             else if (pendingRole === 'superadmin') { setIsSuperAdmin(true); if (currentView === 'safety') setSafetyMode('edit'); } 
@@ -443,7 +486,6 @@
               </div>
             </div>
             
-            {/* 總管理者專屬設定按鈕 */}
             {isSuperAdmin && (
               <div className="mt-6 pt-6 border-t border-gray-200 text-center">
                  <button onClick={() => navigateTo('settings')} className="bg-gray-800 text-white font-bold py-3 px-6 rounded-xl shadow-md hover:bg-gray-900 transition-all flex items-center justify-center gap-2 w-full">
@@ -582,7 +624,8 @@
                    </div>
                    <ul className="text-sm text-gray-600 space-y-1 list-disc pl-5">
                      <li>標示 <span className="text-red-500 font-bold">🔴 絕對紅字</span> 的項目，只要有一項不合格，本月安全獎金即為 0 元。</li>
-                     <li>黑字項目不合格超過 5 個，獎金亦為 0 元。</li>
+                     <li>全數項目皆合格 (無違規)，本月安全獎金為 3000 元。</li>
+                     <li>僅黑字項目不合格 5 個 (含) 以內，安全獎金為 1500 元，超過 5 個則為 0 元。</li>
                    </ul>
                    <div className="mt-4 pt-3 border-t text-sm font-bold flex justify-between"><span className={`${answeredCount < 96 ? 'text-red-500' : 'text-emerald-600'}`}>完成度: {answeredCount}/96</span></div>
                 </div>
@@ -632,7 +675,7 @@
         };
 
         const renderDashboard = () => (
-          <div className="max-w-5xl mx-auto bg-gray-50 min-h-screen p-6">
+          <div className="max-w-6xl mx-auto bg-gray-50 min-h-screen p-6">
             <div className="flex justify-between items-center mb-6">
               <button onClick={() => navigateTo('home')} className="flex items-center text-gray-500 font-bold">返回首頁</button>
               <div className="flex gap-2">
@@ -651,20 +694,34 @@
               </div>
               <div className="p-6 overflow-x-auto">
                 <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-gray-100 text-gray-600 text-sm"><th className="p-3 border-b font-bold">分院</th><th className="p-3 border-b font-bold">護理師</th><th className="p-3 border-b text-center font-bold">服務評核</th><th className="p-3 border-b text-center font-bold">安全評核</th><th className="p-3 border-b text-center font-bold">狀態</th><th className="p-3 border-b text-right text-orange-600 font-bold">達成總獎金</th></tr></thead>
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-600 text-sm">
+                      <th className="p-3 border-b font-bold whitespace-nowrap">分院</th>
+                      <th className="p-3 border-b font-bold whitespace-nowrap">護理師</th>
+                      <th className="p-3 border-b text-center font-bold whitespace-nowrap">服務評核</th>
+                      <th className="p-3 border-b text-center font-bold whitespace-nowrap">安全評核</th>
+                      <th className="p-3 border-b text-center font-bold whitespace-nowrap">狀態</th>
+                      <th className="p-3 border-b text-right text-blue-600 font-bold whitespace-nowrap">服務獎金</th>
+                      <th className="p-3 border-b text-right text-emerald-600 font-bold whitespace-nowrap">安全獎金</th>
+                      <th className="p-3 border-b text-right text-orange-600 font-bold whitespace-nowrap">達成總獎金</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {BRANCHES.map((branch) => NURSE_DATA[branch].map((nurse, nIdx) => {
                         const rec = allRecords[dashMonth]?.[branch]?.[nurse];
                         const isSrvDone = !!rec?.isServiceComplete; const isSafDone = !!rec?.isSafetyComplete;
                         const isCalculated = isSrvDone && isSafDone; 
+                        const bonusInfo = calculateBonus(rec);
                         return (
                           <tr key={`${branch}-${nurse}`} className="border-b hover:bg-gray-50">
                             {nIdx === 0 && <td rowSpan={NURSE_DATA[branch].length} className="p-3 font-bold border-r">{branch}</td>}
-                            <td className="p-3 text-gray-800">{nurse}</td>
+                            <td className="p-3 text-gray-800 whitespace-nowrap">{nurse}</td>
                             <td className="p-3 text-center">{isSrvDone ? '✅' : '❌'}</td>
                             <td className="p-3 text-center">{isSafDone ? '✅' : '❌'}</td>
-                            <td className="p-3 text-center">{isCalculated ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">已完成</span> : <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold">未完成</span>}</td>
-                            <td className="p-3 text-right font-bold">{isCalculated ? <span className="text-orange-600">${calculateBonus(rec).total}</span> : <span className="text-gray-300">-</span>}</td>
+                            <td className="p-3 text-center whitespace-nowrap">{isCalculated ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">已完成</span> : <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold">未完成</span>}</td>
+                            <td className="p-3 text-right font-bold text-blue-600">{isCalculated ? `$${bonusInfo.serviceBonus}` : <span className="text-gray-300">-</span>}</td>
+                            <td className="p-3 text-right font-bold text-emerald-600">{isCalculated ? `$${bonusInfo.safetyBonus}` : <span className="text-gray-300">-</span>}</td>
+                            <td className="p-3 text-right font-bold text-orange-600 text-lg">{isCalculated ? `$${bonusInfo.total}` : <span className="text-gray-300">-</span>}</td>
                           </tr>
                         )
                     }))}
@@ -716,6 +773,7 @@
                         </div>
                         <div>
                           <div className="flex justify-between items-center mb-3"><h3 className="font-bold text-lg text-gray-800"><span className="w-2 h-6 bg-emerald-500 rounded-full mr-2 inline-block align-middle"></span>醫療安全評核</h3></div>
+                          <p className="text-sm text-gray-500 mb-2">計分邏輯: 無違規=3000元 / 僅黑字不合格≤5個=1500元 / 任何紅字不合格=0元</p>
                           <div className="grid grid-cols-2 gap-3 mb-4 text-center">
                               <div className={`p-3 rounded-lg border ${redFailCount > 0 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-600'}`}><p className="text-xs mb-1">🔴 紅字不合格</p><p className="font-bold text-2xl">{redFailCount}</p></div>
                               <div className={`p-3 rounded-lg border ${blackFailCount > 5 ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-600'}`}><p className="text-xs mb-1">⚫ 黑字不合格</p><p className="font-bold text-2xl">{blackFailCount}</p></div>
@@ -733,7 +791,6 @@
           );
         };
 
-        // --- 畫面渲染：6. 密碼設定面板 (總管理專用) ---
         const renderSettings = () => (
           <div className="max-w-xl mx-auto bg-gray-50 min-h-screen p-6 pb-20">
              <div className="flex justify-between items-center mb-6">
@@ -786,7 +843,6 @@
             {currentView === 'report' && renderReport()}
             {currentView === 'settings' && isSuperAdmin && renderSettings()}
 
-            {/* 密碼彈窗 (提示文案已移除測試密碼，以保護資安) */}
             {showPasswordModal && (
               <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-fade-in">
@@ -801,7 +857,6 @@
               </div>
             )}
 
-            {/* 系統提示彈窗 */}
             {sysModal.show && (
               <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-fade-in text-center flex flex-col max-h-[90vh]">
@@ -816,7 +871,6 @@
               </div>
             )}
 
-            {/* SOP 彈窗 */}
             {showSopModal && (
               <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -834,7 +888,6 @@
       root.render(<App />);
     };
 
-    // 確保 Firebase 載入完成後再初始化 React
     if (window.FirebaseAPI) {
       initApp();
     } else {
