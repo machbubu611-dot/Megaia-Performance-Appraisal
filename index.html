@@ -24,22 +24,35 @@
     .animate-fade-in { animation: fadeIn 0.2s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     
-    /* 截圖與匯出專用淨化樣式：解決輸入框、下拉選單被裁切的問題 */
+    /* 截圖與匯出專用淨化樣式：徹底解決輸入框、下拉選單文字被裁切與灰底問題 */
+    .exporting-mode * {
+       -webkit-print-color-adjust: exact !important;
+       print-color-adjust: exact !important;
+    }
     .exporting-mode input, .exporting-mode select, .exporting-mode textarea {
        color: #000 !important;
-       border: 1px solid #e5e7eb !important;
+       border: 1px solid #9ca3af !important;
        box-shadow: none !important;
-       background-color: transparent !important;
+       background-color: #fff !important;
+       appearance: none !important;
+       -webkit-appearance: none !important;
+       border-radius: 4px !important;
+       padding: 6px 10px !important;
+       line-height: 1.2 !important;
+       min-height: 32px !important;
+       height: auto !important;
+       font-family: inherit !important;
+       overflow: visible !important;
+       white-space: normal !important;
     }
-    .exporting-mode input[type="date"]::-webkit-calendar-picker-indicator {
+    .exporting-mode input[type="date"]::-webkit-calendar-picker-indicator,
+    .exporting-mode input[type="date"]::-webkit-clear-button,
+    .exporting-mode input[type="date"]::-webkit-inner-spin-button {
        display: none !important;
        -webkit-appearance: none;
     }
     .exporting-mode select {
-       appearance: none !important;
-       -webkit-appearance: none !important;
        background-image: none !important;
-       padding-right: 0.5rem !important;
     }
     .exporting-mode input[type="date"] {
        min-width: 120px !important;
@@ -143,7 +156,6 @@
 
       // 嚴格定義顯示順序
       const NURSING_BRANCHES = ['台北仁愛', '桃園中正', '新竹光明', '台中向上', '台中崇德', '高雄巨蛋'];
-
       const COUNTER_BRANDS = ['美加', '康博'];
       const COUNTER_BRANCHES = {
         '美加': ['台北仁愛', '桃園中正', '新竹光明', '台中向上', '台中崇德', '高雄巨蛋'],
@@ -362,7 +374,6 @@
           replacement.innerText = text;
           const style = window.getComputedStyle(input);
           
-          // 強制設定為顯示純文字，避免任何隱藏或超出裁切
           replacement.style.cssText = `
             display: flex;
             align-items: center;
@@ -458,7 +469,6 @@
             el.style.setProperty('background-color', '#ffffff', 'important');
             el.classList.remove('animate-fade-in');
             
-            // 啟用替身轉換技術 (防止文字裁切)
             const replacements = replaceInputsWithDivs(el);
 
             setTimeout(() => {
@@ -495,7 +505,6 @@
             el.style.setProperty('background-color', '#ffffff', 'important');
             el.classList.remove('animate-fade-in');
             
-            // 啟用替身轉換技術 (防止文字裁切)
             const replacements = replaceInputsWithDivs(el);
 
             setTimeout(() => {
@@ -568,14 +577,18 @@
                   const summary = getCounterStaffSummary(rec, expectedCount);
                   if (summary.isComplete) { branchSum += summary.avgScore; branchCount++; }
                   
-                  const ev1 = evaluators[0]; const ev1Data = ev1 ? rec?.evaluations?.[ev1.name] : null; const s1 = (ev1Data && ev1Data.isComplete) ? (Object.values(ev1Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
-                  const ev2 = evaluators[1]; const ev2Data = ev2 ? rec?.evaluations?.[ev2.name] : null; const s2 = (ev2Data && ev2Data.isComplete) ? (Object.values(ev2Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
-                  const ev3 = evaluators[2]; const ev3Data = ev3 ? rec?.evaluations?.[ev3.name] : null; const s3 = (ev3Data && ev3Data.isComplete) ? (Object.values(ev3Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
+                  const evals = Object.keys(rec?.evaluations || {}).filter(k => rec.evaluations[k].isComplete).map(k => {
+                    const sum = Object.values(rec.evaluations[k].scores).reduce((a,b)=>a+b,0);
+                    return { name: k, score: sum/5 };
+                  });
+                  const ev1 = evals[0] ? `${evals[0].name}` : '-'; const s1 = evals[0] ? evals[0].score : '-';
+                  const ev2 = evals[1] ? `${evals[1].name}` : '-'; const s2 = evals[1] ? evals[1].score : '-';
+                  const ev3 = evals[2] ? `${evals[2].name}` : '-'; const s3 = evals[2] ? evals[2].score : '-';
 
                   const statusText = summary.isComplete ? '已完成' : (summary.evalCount > 0 ? `${summary.evalCount}/${expectedCount}人已評` : '未完成');
                   const bonusText = summary.isComplete ? `$${summary.bonus}` : '-';
 
-                  csvContent += `${brand},${branch},${staff},客服櫃台,${statusText},${ev1?ev1.name:'-'},${s1},${ev2?ev2.name:'-'},${s2},${ev3?ev3.name:'-'},${s3},${summary.evalCount > 0 ? summary.avgScore : '-'},${bonusText}\n`;
+                  csvContent += `${brand},${branch},${staff},客服櫃台,${statusText},${ev1},${s1},${ev2},${s2},${ev3},${s3},${summary.evalCount > 0 ? summary.avgScore : '-'},${bonusText}\n`;
                 });
                 
                 const dirInfo = rosters.counter[brand][branch].director;
@@ -846,6 +859,16 @@
             const displayMissing = missingItemsList.slice(0, 3).join('\n\n'); const extraMsg = missingItemsList.length > 3 ? `\n\n...以及其他 ${missingItemsList.length - 3} 項未評核` : '';
             setSysModal({ show: true, alignLeft: true, msg: `【防呆提醒】您還有 ${96 - answeredCount} 題未評核！\n\n🔍 漏評項目提示：\n${displayMissing}${extraMsg}\n\n確定要強制「暫存」並返回首頁嗎？\n(若要繼續評分請按取消)`, type: 'confirm', onConfirm: () => { saveNursingToRecords(false); setCurrentView('home'); } });
           } else { saveNursingToRecords(true); setCurrentView('home'); }
+        };
+
+        const handleCounterSaveAndReturn = () => {
+          if (isReadOnlyMode) return setCurrentView('home');
+          const qCount = Object.keys(counterData.scores || {}).length;
+          if (qCount < 5 || !counterData.evaluatorTitle || !counterData.evaluatorName) {
+            setSysModal({ show: true, msg: `【防呆提醒】表單尚未填寫完整 (包含5題計分項目與評核人資訊)。\n確定要強制「暫存」並返回首頁嗎？`, type: 'confirm', onConfirm: () => { saveCounterToRecords(false); setCurrentView('home'); } });
+          } else { 
+            setSysModal({ show: true, msg: `【送出確認】\n請最後檢查以下資訊是否正確：\n\n1.「評核人職稱」與「姓名」\n2. 1~5 題是否皆已評分\n(第 6 題為非必填)\n\n確認無誤後即可送出！`, type: 'confirm', alignLeft: true, onConfirm: () => { saveCounterToRecords(true); setCurrentView('home'); } });
+          }
         };
 
         // ==========================
