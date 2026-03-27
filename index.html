@@ -433,6 +433,7 @@
 
         const [rosters, setRosters] = useState(DEFAULT_ROSTERS);
         const [rosterTab, setRosterTab] = useState('nursing'); 
+        const [dashboardStatus, setDashboardStatus] = useState({});
 
         const [nursingRecords, setNursingRecords] = useState({});
         const [baseInfo, setBaseInfo] = useState({ branch: '', month: '', nurse: '' });
@@ -466,7 +467,7 @@
             const originalStyle = el.getAttribute('style') || '';
             el.style.setProperty('box-shadow', 'none', 'important');
             el.style.setProperty('border-radius', '0px', 'important');
-            el.style.setProperty('background-color', '#f8fafc', 'important'); // bg-slate-50
+            el.style.setProperty('background-color', '#f8fafc', 'important'); 
             el.classList.remove('animate-fade-in');
             el.classList.add('exporting-mode');
             
@@ -505,7 +506,7 @@
             const originalStyle = el.getAttribute('style') || '';
             el.style.setProperty('box-shadow', 'none', 'important');
             el.style.setProperty('border-radius', '0px', 'important');
-            el.style.setProperty('background-color', '#f8fafc', 'important'); // bg-slate-50
+            el.style.setProperty('background-color', '#f8fafc', 'important'); 
             el.classList.remove('animate-fade-in');
             el.classList.add('exporting-mode');
             
@@ -583,18 +584,14 @@
                   const summary = getCounterStaffSummary(rec, expectedCount);
                   if (summary.isComplete) { branchSum += summary.avgScore; branchCount++; }
                   
-                  const evals = Object.keys(rec?.evaluations || {}).filter(k => rec.evaluations[k].isComplete).map(k => {
-                    const sum = Object.values(rec.evaluations[k].scores).reduce((a,b)=>a+b,0);
-                    return { name: k, score: sum/5 };
-                  });
-                  const ev1 = evals[0] ? `${evals[0].name}` : '-'; const s1 = evals[0] ? evals[0].score : '-';
-                  const ev2 = evals[1] ? `${evals[1].name}` : '-'; const s2 = evals[1] ? evals[1].score : '-';
-                  const ev3 = evals[2] ? `${evals[2].name}` : '-'; const s3 = evals[2] ? evals[2].score : '-';
+                  const ev1 = evaluators[0]; const ev1Data = ev1 ? rec?.evaluations?.[ev1.name] : null; const s1 = (ev1Data && ev1Data.isComplete) ? (Object.values(ev1Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
+                  const ev2 = evaluators[1]; const ev2Data = ev2 ? rec?.evaluations?.[ev2.name] : null; const s2 = (ev2Data && ev2Data.isComplete) ? (Object.values(ev2Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
+                  const ev3 = evaluators[2]; const ev3Data = ev3 ? rec?.evaluations?.[ev3.name] : null; const s3 = (ev3Data && ev3Data.isComplete) ? (Object.values(ev3Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
 
                   const statusText = summary.isComplete ? '已完成' : (summary.evalCount > 0 ? `${summary.evalCount}/${expectedCount}人已評` : '未完成');
                   const bonusText = summary.isComplete ? `$${summary.bonus}` : '-';
 
-                  csvContent += `${brand},${branch},${staff},客服櫃台,${statusText},${ev1},${s1},${ev2},${s2},${ev3},${s3},${summary.evalCount > 0 ? summary.avgScore : '-'},${bonusText}\n`;
+                  csvContent += `${brand},${branch},${staff},客服櫃台,${statusText},${ev1?ev1.name:'-'},${s1},${ev2?ev2.name:'-'},${s2},${ev3?ev3.name:'-'},${s3},${summary.evalCount > 0 ? summary.avgScore : '-'},${bonusText}\n`;
                 });
                 
                 const dirInfo = rosters.counter[brand][branch].director;
@@ -649,24 +646,66 @@
           const unsubS = onSnapshot(sRef, (snapshot) => {
             let loadedPasswords = null;
             let loadedRosters = null;
+            let loadedDashboardStatus = null;
             snapshot.forEach(docSnap => { 
               if (docSnap.id === 'passwords') loadedPasswords = docSnap.data(); 
               if (docSnap.id === 'rosters') loadedRosters = docSnap.data();
+              if (docSnap.id === 'dashboardStatus') loadedDashboardStatus = docSnap.data();
             });
             if (loadedPasswords) { setPasswords({ ...DEFAULT_PASSWORDS, ...loadedPasswords }); setEditingPasswords({ ...DEFAULT_PASSWORDS, ...loadedPasswords }); }
             if (loadedRosters) { setRosters(loadedRosters); }
+            if (loadedDashboardStatus) { setDashboardStatus(loadedDashboardStatus); }
           });
           return () => { unsubN(); unsubC(); unsubS(); }
         }, [user]);
+
+        // 櫃台表單自動解鎖邏輯
+        const checkCounterAutoCompleted = (month) => {
+          if (!month) return false;
+          let hasAnyEvaluatee = false;
+          for (const brand of COUNTER_BRANDS) {
+            for (const branch of COUNTER_BRANCHES[brand]) {
+              const branchData = rosters.counter[brand]?.[branch];
+              if (!branchData) continue;
+              const expectedCount = branchData.evaluators.filter(e=>e.active).length;
+              const evaluatees = branchData.evaluatees.filter(e=>e.active);
+              if (evaluatees.length > 0) hasAnyEvaluatee = true;
+              for (const emp of evaluatees) {
+                const rec = counterRecords[month]?.[brand]?.[branch]?.[emp.name];
+                const summary = getCounterStaffSummary(rec, expectedCount);
+                if (!summary.isComplete) return false;
+              }
+            }
+          }
+          return hasAnyEvaluatee;
+        };
+
+        const isCounterAutoUnlocked = checkCounterAutoCompleted(counterInfo.month);
+        const isCounterManuallyUnlocked = dashboardStatus[counterInfo.month]?.counterUnlocked === true;
+        const isCounterReportUnlocked = isCounterAutoUnlocked || isCounterManuallyUnlocked;
+
+        const handleToggleCounterUnlock = async () => {
+          if (!counterInfo.month) return;
+          const newStatus = {
+            ...dashboardStatus,
+            [counterInfo.month]: { 
+              ...dashboardStatus[counterInfo.month], 
+              counterUnlocked: !isCounterManuallyUnlocked 
+            }
+          };
+          setDashboardStatus(newStatus);
+          if (db && user) {
+            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'dashboardStatus'), newStatus); } 
+            catch (e) { console.error(e); }
+          }
+        };
 
         const saveNursingToRecords = async (showSuccessMsg = false) => {
           if (!baseInfo.month || !baseInfo.branch || !baseInfo.nurse || isReadOnlyMode) return;
           const { month, branch, nurse } = baseInfo;
           
-          // 取得目前暫存的完整紀錄，防止兩張表單互相覆寫
           const existingRecord = nursingRecords[month]?.[branch]?.[nurse] || {};
           
-          // 智慧判定：只更新「當前正在填寫」的表單，另一張表單原封不動保留
           let updatedServiceData = currentView === 'service' ? serviceData : (existingRecord.serviceData || serviceData);
           let updatedServiceSignatures = currentView === 'service' ? serviceSignatures : (existingRecord.serviceSignatures || serviceSignatures);
           let updatedSafetyData = currentView === 'safety' ? safetyData : (existingRecord.safetyData || safetyData);
@@ -694,10 +733,7 @@
           setNursingRecords(updatedRecords);
 
           if (db && user) {
-            try { 
-              // 加上 merge: true 強制資料庫進行欄位合併，防止空資料洗掉已存在的資料
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData, { merge: true }); 
-            } catch (e) { console.error("Save error: ", e); }
+            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData, { merge: true }); } catch (e) {}
           }
           if (showSuccessMsg) setSysModal({ show: true, msg: '✅ 評核資料已成功儲存！', type: 'alert' });
         };
@@ -720,10 +756,7 @@
           setCounterRecords(updated);
 
           if (db && user) {
-            try { 
-              // 加上 merge: true 強制資料庫合併，避免多位主管評分時互相覆寫
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'counter_assessments', `${month}_${brand}_${branch}_${staff}`), recordData, { merge: true }); 
-            } catch (e) { console.error("Save error: ", e); }
+            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'counter_assessments', `${month}_${brand}_${branch}_${staff}`), recordData, { merge: true }); } catch (e) {}
           }
           if (showSuccessMsg) setSysModal({ show: true, msg: '✅ 櫃台評核已成功儲存！', type: 'alert' });
         };
@@ -860,7 +893,7 @@
               else if (type === 'safety') { newSafetyData = {}; newSafetySigs = getEmptyNursingRecord().safetySignatures; setSafetyData(newSafetyData); setSafetySignatures(newSafetySigs); newIsSafComplete = false; }
               const recordData = { month, branch, nurse, serviceData: newServiceData, serviceSignatures: newServiceSigs, safetyData: newSafetyData, safetySignatures: newSafetySigs, isServiceComplete: newIsSrvComplete, isSafetyComplete: newIsSafComplete };
               const updatedRecords = { ...nursingRecords }; if (!updatedRecords[month]) updatedRecords[month] = {}; if (!updatedRecords[month][branch]) updatedRecords[month][branch] = {}; updatedRecords[month][branch][nurse] = recordData; setNursingRecords(updatedRecords);
-              if (db && user) { try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData); setTimeout(() => { setSysModal({ show: true, msg: '✅ 已成功重置表單！', type: 'alert' }); }, 100); } catch (e) {} }
+              if (db && user) { try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData, { merge: true }); setTimeout(() => { setSysModal({ show: true, msg: '✅ 已成功重置表單！', type: 'alert' }); }, 100); } catch (e) {} }
             }
           });
         };
@@ -875,7 +908,7 @@
               const updated = { ...counterRecords };
               if (!updated[month]) updated[month] = {}; if (!updated[month][brand]) updated[month][brand] = {}; if (!updated[month][brand][branch]) updated[month][brand][branch] = {};
               updated[month][brand][branch][staff] = newRec; setCounterRecords(updated);
-              if (db && user) { try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'counter_assessments', `${month}_${brand}_${branch}_${staff}`), newRec); setTimeout(() => { setSysModal({ show: true, msg: '✅ 已成功重置表單！', type: 'alert' }); }, 100); } catch (e) {} }
+              if (db && user) { try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'counter_assessments', `${month}_${brand}_${branch}_${staff}`), newRec, { merge: true }); setTimeout(() => { setSysModal({ show: true, msg: '✅ 已成功重置表單！', type: 'alert' }); }, 100); } catch (e) {} }
             }
           });
         };
@@ -1026,7 +1059,7 @@
                     <button disabled={!canStartAssessment} onClick={() => navigateTo('service')} className={`w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all ${canStartAssessment ? 'bg-sky-700 hover:bg-sky-800 text-white hover:shadow-lg hover:-translate-y-0.5' : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-70'}`}>進入「服務品質評核」</button>
                     <button disabled={!canStartAssessment} onClick={() => navigateTo('safety')} className={`w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all ${canStartAssessment ? 'bg-teal-700 hover:bg-teal-800 text-white hover:shadow-lg hover:-translate-y-0.5' : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-70'}`}>進入「醫療安全評核」</button>
                     <div className="grid grid-cols-2 gap-3 mt-4">
-                      <button onClick={() => navigateTo('report')} className="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-50 text-sky-800 border border-sky-200 hover:bg-sky-100 shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm">🔒 單人報表</button>
+                      <button onClick={() => navigateTo('report')} className="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-50 text-sky-800 border border-sky-200 hover:bg-sky-100 shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm">📄 單人報表</button>
                       <button onClick={() => navigateTo('dashboard')} className="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm">📊 全院儀表板</button>
                     </div>
                   </div>
@@ -1095,20 +1128,37 @@
                       </select>
                     </div>
                   </div>
+                  
                   <div className="space-y-4 pt-2">
                     <button disabled={!counterInfo.staff || !counterInfo.month || !counterInfo.evaluatorName} onClick={() => navigateTo('counter_form')} className={`w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all ${counterInfo.staff && counterInfo.month && counterInfo.evaluatorName ? 'bg-teal-700 hover:bg-teal-800 text-white hover:shadow-lg hover:-translate-y-0.5' : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-70'}`}>進入「櫃台客服品質考核」</button>
+                    
                     <div className="grid grid-cols-2 gap-3 mt-4">
                       <button onClick={() => {
-                        if (isSuperAdmin) { navigateTo('report'); } else { setPendingRole('counter_report'); setShowPasswordModal(true); }
-                      }} className="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-50 text-teal-800 border border-teal-200 hover:bg-teal-100 shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm">
-                        🔒 單店報表
+                        if (isSuperAdmin || isCounterReportUnlocked) { navigateTo('report'); } else { setPendingRole('counter_report'); setShowPasswordModal(true); }
+                      }} className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm ${isCounterReportUnlocked ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100' : 'bg-slate-50 text-teal-800 border border-teal-200 hover:bg-teal-100'}`}>
+                        {isCounterReportUnlocked ? '🔓 單店報表 (已開放)' : '🔒 單店報表'}
                       </button>
                       <button onClick={() => {
-                        if (isSuperAdmin) { navigateTo('dashboard'); } else { setPendingRole('counter_report_dash'); setShowPasswordModal(true); }
-                      }} className="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm">
-                        🔒 橫式全院總表
+                        if (isSuperAdmin || isCounterReportUnlocked) { navigateTo('dashboard'); } else { setPendingRole('counter_report_dash'); setShowPasswordModal(true); }
+                      }} className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm ${isCounterReportUnlocked ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100' : 'bg-slate-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100'}`}>
+                        {isCounterReportUnlocked ? '🔓 橫式全院總表 (已開放)' : '🔒 橫式全院總表'}
                       </button>
                     </div>
+
+                    {/* 總管專屬：強制設定報表開放狀態 */}
+                    {isSuperAdmin && counterInfo.month && (
+                      <div className="mt-4 p-4 bg-slate-100/80 rounded-xl border border-slate-200 flex flex-col gap-3 shadow-inner">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-bold text-slate-700">總管權限：本月報表開放狀態</span>
+                          <button onClick={handleToggleCounterUnlock} className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-colors ${isCounterManuallyUnlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-500 hover:bg-slate-600'}`}>
+                            {isCounterManuallyUnlocked ? '已手動開放 (點擊關閉)' : '目前鎖定 (點擊強制開放)'}
+                          </button>
+                        </div>
+                        {isCounterAutoUnlocked && !isCounterManuallyUnlocked && (
+                          <p className="text-xs text-emerald-700 font-bold bg-emerald-100/70 p-2 rounded-lg border border-emerald-200">✨ 系統偵測到本月所有櫃台評核已完成，目前為自動開放狀態！</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1117,10 +1167,10 @@
             {/* 總管權限按鈕 (確保在部門首頁下方永遠顯示) */}
             {isSuperAdmin && (
               <div className="mt-8 pt-6 border-t border-slate-300/50 space-y-3 animate-fade-in no-print relative z-10">
-                 <button onClick={() => setCurrentView('settings')} className="w-full py-4 rounded-xl font-bold text-lg bg-slate-800 text-white shadow-lg hover:bg-slate-900 transition flex justify-center items-center gap-2">
+                 <button onClick={() => setCurrentView('settings')} className="w-full py-4 rounded-xl font-bold text-lg bg-slate-800 text-white shadow-lg hover:bg-slate-900 transition flex justify-center items-center gap-2 border border-slate-700">
                    ⚙️ 進入總管理後台 (名單設定)
                  </button>
-                 <button onClick={() => enterSystem('portal')} className="w-full py-4 rounded-xl font-bold text-lg bg-sky-700 text-white shadow-md hover:bg-sky-800 transition flex justify-center items-center gap-2">
+                 <button onClick={() => enterSystem('portal')} className="w-full py-4 rounded-xl font-bold text-lg bg-sky-700 text-white shadow-md hover:bg-sky-800 transition flex justify-center items-center gap-2 border border-sky-600">
                    🏠 返回主系統選擇大廳
                  </button>
               </div>
@@ -1232,7 +1282,7 @@
                 <div className="flex items-center gap-2 no-print">
                    <button onClick={() => navigateTo('home')} className="text-sm bg-white/20 px-3 py-1 rounded-lg hover:bg-white/30 transition">返回</button>
                    <button onClick={() => captureScreenshot('service-quality-panel', `服務品質評核_${baseInfo.nurse}`)} className="text-sm bg-orange-500 text-white px-3 py-1 rounded-lg hover:bg-orange-400 transition shadow-sm font-bold flex items-center gap-1">📸 儲存圖片</button>
-                   {isSuperAdmin && <button onClick={() => handleResetNursing('service')} className="text-sm bg-red-500 text-white px-3 py-1 rounded-lg hover:bg-red-400 transition shadow-sm font-bold flex items-center gap-1">🔄 重置</button>}
+                   {isSuperAdmin && <button onClick={() => handleResetNursing('service')} className="text-sm bg-red-600 px-3 py-1 rounded-lg hover:bg-red-500 transition shadow-sm font-bold flex items-center gap-1">🔄 重置</button>}
                 </div>
                 <h2 className="font-bold text-lg">服務品質評核</h2>
                 <div className="flex gap-2 no-print">
@@ -1528,14 +1578,9 @@
                               const summary = getCounterStaffSummary(rec, expectedCount);
                               if (summary.isComplete) { branchSum += summary.avgScore; branchCount++; }
                               
-                              const evals = Object.keys(rec?.evaluations || {}).filter(k => rec.evaluations[k].isComplete).map(k => {
-                                const sum = Object.values(rec.evaluations[k].scores).reduce((a,b)=>a+b,0);
-                                return { name: k, score: sum/5 };
-                              });
-                              
-                              const ev1 = evals[0] ? evals[0].name : '-'; const s1 = evals[0] ? evals[0].score : '-';
-                              const ev2 = evals[1] ? evals[1].name : '-'; const s2 = evals[1] ? evals[1].score : '-';
-                              const ev3 = evals[2] ? evals[2].name : '-'; const s3 = evals[2] ? evals[2].score : '-';
+                              const ev1 = evaluators[0]; const ev1Data = ev1 ? rec?.evaluations?.[ev1.name] : null; const s1 = (ev1Data && ev1Data.isComplete) ? (Object.values(ev1Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
+                              const ev2 = evaluators[1]; const ev2Data = ev2 ? rec?.evaluations?.[ev2.name] : null; const s2 = (ev2Data && ev2Data.isComplete) ? (Object.values(ev2Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
+                              const ev3 = evaluators[2]; const ev3Data = ev3 ? rec?.evaluations?.[ev3.name] : null; const s3 = (ev3Data && ev3Data.isComplete) ? (Object.values(ev3Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
 
                               rows.push(
                                 <tr key={`${brand}-${branch}-${staff}`} className="border-b border-slate-100 hover:bg-white transition-colors">
@@ -1546,11 +1591,11 @@
                                   <td className="p-3 text-center">
                                     {summary.isComplete ? <span className="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已完成</span> : <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">{summary.evalCount > 0 ? `${summary.evalCount}/${expectedCount}人已評` : '未完成'}</span>}
                                   </td>
-                                  <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev1}</td>
+                                  <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev1 ? ev1.name : '-'}</td>
                                   <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s1}</td>
-                                  <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev2}</td>
+                                  <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev2 ? ev2.name : '-'}</td>
                                   <td className="p-3 text-center text-sm font-bold text-teal-700">{s2}</td>
-                                  <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev3}</td>
+                                  <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev3 ? ev3.name : '-'}</td>
                                   <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s3}</td>
                                   <td className="p-3 text-center font-bold text-sky-700 text-lg border-l border-slate-200">{summary.evalCount > 0 ? summary.avgScore : '-'}</td>
                                   <td className="p-3 text-right font-bold text-orange-600 border-l border-slate-100">{summary.isComplete ? `$${summary.bonus}` : '-'}</td>
