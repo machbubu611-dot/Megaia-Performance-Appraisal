@@ -662,12 +662,31 @@
         const saveNursingToRecords = async (showSuccessMsg = false) => {
           if (!baseInfo.month || !baseInfo.branch || !baseInfo.nurse || isReadOnlyMode) return;
           const { month, branch, nurse } = baseInfo;
-          const isServiceComplete = !!serviceSignatures.storeManagerSubmitted;
-          let safetyAnsweredCount = 0;
-          SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => safetyAnsweredCount += cat.items.filter(i => safetyData[i.id]).length));
-          const isSafetyComplete = safetySignatures.headNurseName !== '' && safetyAnsweredCount === 96;
+          
+          // 取得目前暫存的完整紀錄，防止兩張表單互相覆寫
+          const existingRecord = nursingRecords[month]?.[branch]?.[nurse] || {};
+          
+          // 智慧判定：只更新「當前正在填寫」的表單，另一張表單原封不動保留
+          let updatedServiceData = currentView === 'service' ? serviceData : (existingRecord.serviceData || serviceData);
+          let updatedServiceSignatures = currentView === 'service' ? serviceSignatures : (existingRecord.serviceSignatures || serviceSignatures);
+          let updatedSafetyData = currentView === 'safety' ? safetyData : (existingRecord.safetyData || safetyData);
+          let updatedSafetySignatures = currentView === 'safety' ? safetySignatures : (existingRecord.safetySignatures || safetySignatures);
 
-          const recordData = { month, branch, nurse, serviceData, serviceSignatures, safetyData, safetySignatures, isServiceComplete, isSafetyComplete };
+          const isServiceComplete = !!updatedServiceSignatures.storeManagerSubmitted;
+          let safetyAnsweredCount = 0;
+          SAFETY_SECTIONS.forEach(sec => sec.categories.forEach(cat => safetyAnsweredCount += cat.items.filter(i => updatedSafetyData[i.id]).length));
+          const isSafetyComplete = updatedSafetySignatures.headNurseName !== '' && safetyAnsweredCount === 96;
+
+          const recordData = { 
+            month, branch, nurse, 
+            serviceData: updatedServiceData, 
+            serviceSignatures: updatedServiceSignatures, 
+            safetyData: updatedSafetyData, 
+            safetySignatures: updatedSafetySignatures, 
+            isServiceComplete, 
+            isSafetyComplete 
+          };
+
           const updatedRecords = { ...nursingRecords };
           if (!updatedRecords[month]) updatedRecords[month] = {};
           if (!updatedRecords[month][branch]) updatedRecords[month][branch] = {};
@@ -675,7 +694,10 @@
           setNursingRecords(updatedRecords);
 
           if (db && user) {
-            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData); } catch (e) {}
+            try { 
+              // 加上 merge: true 強制資料庫進行欄位合併，防止空資料洗掉已存在的資料
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData, { merge: true }); 
+            } catch (e) { console.error("Save error: ", e); }
           }
           if (showSuccessMsg) setSysModal({ show: true, msg: '✅ 評核資料已成功儲存！', type: 'alert' });
         };
@@ -698,7 +720,10 @@
           setCounterRecords(updated);
 
           if (db && user) {
-            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'counter_assessments', `${month}_${brand}_${branch}_${staff}`), recordData); } catch (e) {}
+            try { 
+              // 加上 merge: true 強制資料庫合併，避免多位主管評分時互相覆寫
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'counter_assessments', `${month}_${brand}_${branch}_${staff}`), recordData, { merge: true }); 
+            } catch (e) { console.error("Save error: ", e); }
           }
           if (showSuccessMsg) setSysModal({ show: true, msg: '✅ 櫃台評核已成功儲存！', type: 'alert' });
         };
