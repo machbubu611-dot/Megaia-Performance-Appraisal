@@ -16,6 +16,8 @@
   <!-- 載入截圖與 PDF 套件 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- 載入 Excel 匯出套件 (SheetJS) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <!-- 系統樣式設定 -->
   <style>
@@ -72,13 +74,13 @@
   <!-- 系統掛載點 -->
   <div id="root"></div>
 
-  <!-- Firebase 模組載入 -->
+  <!-- Firebase 模組載入 (升級至 11.6.1 解決連線逾時問題) -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-    import { getFirestore, collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    window.FirebaseAPI = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, doc, setDoc, onSnapshot };
+    window.FirebaseAPI = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, doc, setDoc, onSnapshot };
     window.dispatchEvent(new Event('firebaseLoaded'));
   </script>
 
@@ -86,10 +88,11 @@
   <script type="text/babel">
     const initApp = () => {
       const { useState, useEffect } = React;
-      const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, doc, setDoc, onSnapshot } = window.FirebaseAPI;
+      const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, doc, setDoc, onSnapshot } = window.FirebaseAPI;
 
       // --- 0. Firebase 初始化與設定 ---
-      const myFirebaseConfig = {
+      // 強制連接回您專屬的資料庫，以找回所有歷史紀錄！
+      const firebaseConfig = {
         apiKey: "AIzaSyCY3wsI3Hg5m50D7xfzJmb6-AVJyaQCEDM",
         authDomain: "megaia-performance-appraisal.firebaseapp.com",
         projectId: "megaia-performance-appraisal",
@@ -99,10 +102,10 @@
         measurementId: "G-NSZT37EZ12"
       };
 
-      const app = initializeApp(myFirebaseConfig);
+      const app = initializeApp(firebaseConfig);
       const auth = getAuth(app);
       const db = getFirestore(app);
-      const appId = 'megaia-appraisal';
+      const appId = 'megaia-appraisal'; // 強制使用原本的儲存路徑
 
       const DEFAULT_PASSWORDS = {
         superadmin: 'admin', manager: '1357', storeManager: 'megaia', safetyUnlock: 'headnurse', hr: 'hr'
@@ -555,8 +558,18 @@
         };
 
         const exportDashboardToExcel = () => {
+          if (!window.XLSX) {
+            setSysModal({ show: true, msg: 'Excel 匯出模組載入中，請稍後重試！', type: 'alert' });
+            return;
+          }
+
+          let excelData = [];
+          let fileName = '';
+
           if (sysModule === 'nursing') {
-            let csvContent = '\uFEFF分院,護理師,服務品質評核,醫療安全評核,總狀態,服務評核獎金(NT$),安全評核獎金(NT$),達成總獎金(NT$)\n';
+            fileName = `護理部評核進度_${dashMonth}`;
+            excelData.push(['分院', '護理師', '服務品質評核', '醫療安全評核', '總狀態', '服務評核獎金(NT$)', '安全評核獎金(NT$)', '達成總獎金(NT$)']);
+            
             NURSING_BRANCHES.forEach(branch => {
               if (!rosters.nursing[branch]) return;
               rosters.nursing[branch].filter(n=>n.active).map(n=>n.name).forEach(nurse => {
@@ -564,13 +577,23 @@
                 const isSrvDone = !!rec?.isServiceComplete; const isSafDone = !!rec?.isSafetyComplete;
                 const isCalculated = isSrvDone && isSafDone;
                 const bonusInfo = calculateNursingBonus(rec);
-                csvContent += `${branch},${nurse},${isSrvDone?'V':'X'},${isSafDone?'V':'X'},${isCalculated?'已完成':'未完成'},${isCalculated?bonusInfo.serviceBonus:''},${isCalculated?bonusInfo.safetyBonus:''},${isCalculated?bonusInfo.total:''}\n`;
+                
+                excelData.push([
+                  branch, 
+                  nurse, 
+                  isSrvDone ? 'V' : 'X', 
+                  isSafDone ? 'V' : 'X', 
+                  isCalculated ? '已完成' : '未完成', 
+                  isCalculated ? bonusInfo.serviceBonus : '', 
+                  isCalculated ? bonusInfo.safetyBonus : '', 
+                  isCalculated ? bonusInfo.total : ''
+                ]);
               });
             });
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `護理部評核進度_${dashMonth}.csv`; link.click();
           } else {
-            let csvContent = '\uFEFF品牌,分院,姓名,職稱,進度狀態,評核人1,評分1,評核人2,評分2,評核人3,評分3,最終平均,達成獎金(NT$)\n';
+            fileName = `櫃台評核進度_${dashMonth}`;
+            excelData.push(['品牌', '分院', '姓名', '職稱', '進度狀態', '評核人1', '評分1', '評核人2', '評分2', '評核人3', '評分3', '最終平均', '達成獎金(NT$)']);
+            
             COUNTER_BRANDS.forEach(brand => {
               COUNTER_BRANCHES[brand].forEach(branch => {
                 if (!rosters.counter[brand] || !rosters.counter[brand][branch]) return;
@@ -591,25 +614,48 @@
                   const statusText = summary.isComplete ? '已完成' : (summary.evalCount > 0 ? `${summary.evalCount}/${expectedCount}人已評` : '未完成');
                   const bonusText = summary.isComplete ? `$${summary.bonus}` : '-';
 
-                  csvContent += `${brand},${branch},${staff},客服櫃台,${statusText},${ev1?ev1.name:'-'},${s1},${ev2?ev2.name:'-'},${s2},${ev3?ev3.name:'-'},${s3},${summary.evalCount > 0 ? summary.avgScore : '-'},${bonusText}\n`;
+                  excelData.push([
+                    brand, branch, staff, '客服櫃台', statusText,
+                    ev1 ? ev1.name : '-', s1,
+                    ev2 ? ev2.name : '-', s2,
+                    ev3 ? ev3.name : '-', s3,
+                    summary.evalCount > 0 ? summary.avgScore : '-',
+                    bonusText
+                  ]);
                 });
                 
                 const dirInfo = rosters.counter[brand][branch].director;
                 if (dirInfo && dirInfo.active && dirInfo.name) {
                   let dirAvg = branchCount > 0 ? parseFloat((branchSum/branchCount).toFixed(1)) : 0;
                   let dirBonus = branchCount > 0 ? calculateDirectorBonus(dirAvg) : '';
-                  csvContent += `${brand},${branch},${dirInfo.name},主任,${branchCount > 0 ? '已結算' : '待結算'},,,,,,,${branchCount > 0 ? dirAvg : '-'},${dirBonus ? '$'+dirBonus : '-'}\n`;
+                  excelData.push([
+                    brand, branch, dirInfo.name, '主任', 
+                    branchCount > 0 ? '已結算' : '待結算',
+                    '', '', '', '', '', '',
+                    branchCount > 0 ? dirAvg : '-',
+                    dirBonus ? `$${dirBonus}` : '-'
+                  ]);
                 }
               });
             });
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `櫃台評核進度_${dashMonth}.csv`; link.click();
           }
+
+          const worksheet = window.XLSX.utils.aoa_to_sheet(excelData);
+          const workbook = window.XLSX.utils.book_new();
+          window.XLSX.utils.book_append_sheet(workbook, worksheet, "評核報表");
+          window.XLSX.writeFile(workbook, `${fileName}.xlsx`);
         };
 
         useEffect(() => {
           if (!auth) return;
-          const initAuth = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
+          const initAuth = async () => { 
+            try { 
+              // 連接外部專屬資料庫，必須強制使用匿名登入
+              await signInAnonymously(auth); 
+            } catch (e) { 
+              console.error("Auth init error: ", e); 
+            } 
+          };
           initAuth();
           const unsubscribe = onAuthStateChanged(auth, setUser);
           return () => unsubscribe();
@@ -617,6 +663,9 @@
 
         useEffect(() => {
           if (!user || !db) return;
+
+          const errHandler = (err) => console.error("Firestore Error:", err);
+
           const nRef = collection(db, 'artifacts', appId, 'public', 'data', 'assessments');
           const unsubN = onSnapshot(nRef, (snapshot) => {
             const newRecords = {};
@@ -627,7 +676,7 @@
               newRecords[month][branch][nurse] = data;
             });
             setNursingRecords(newRecords);
-          });
+          }, errHandler);
           
           const cRef = collection(db, 'artifacts', appId, 'public', 'data', 'counter_assessments');
           const unsubC = onSnapshot(cRef, (snapshot) => {
@@ -640,7 +689,7 @@
               newRecords[month][brand][branch][staff] = data;
             });
             setCounterRecords(newRecords);
-          });
+          }, errHandler);
           
           const sRef = collection(db, 'artifacts', appId, 'public', 'data', 'settings');
           const unsubS = onSnapshot(sRef, (snapshot) => {
@@ -655,7 +704,7 @@
             if (loadedPasswords) { setPasswords({ ...DEFAULT_PASSWORDS, ...loadedPasswords }); setEditingPasswords({ ...DEFAULT_PASSWORDS, ...loadedPasswords }); }
             if (loadedRosters) { setRosters(loadedRosters); }
             if (loadedDashboardStatus) { setDashboardStatus(loadedDashboardStatus); }
-          });
+          }, errHandler);
           return () => { unsubN(); unsubC(); unsubS(); }
         }, [user]);
 
@@ -733,7 +782,13 @@
           setNursingRecords(updatedRecords);
 
           if (db && user) {
-            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData, { merge: true }); } catch (e) {}
+            try { 
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', `${month}_${branch}_${nurse}`), recordData, { merge: true }); 
+            } catch (e) { 
+              console.error("Save error: ", e); 
+              setSysModal({ show: true, msg: '儲存失敗，請檢查網路連線。', type: 'alert' });
+              return;
+            }
           }
           if (showSuccessMsg) setSysModal({ show: true, msg: '✅ 評核資料已成功儲存！', type: 'alert' });
         };
@@ -756,7 +811,13 @@
           setCounterRecords(updated);
 
           if (db && user) {
-            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'counter_assessments', `${month}_${brand}_${branch}_${staff}`), recordData, { merge: true }); } catch (e) {}
+            try { 
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'counter_assessments', `${month}_${brand}_${branch}_${staff}`), recordData, { merge: true }); 
+            } catch (e) { 
+              console.error("Save error: ", e);
+              setSysModal({ show: true, msg: '儲存失敗，請檢查網路連線。', type: 'alert' });
+              return;
+            }
           }
           if (showSuccessMsg) setSysModal({ show: true, msg: '✅ 櫃台評核已成功儲存！', type: 'alert' });
         };
@@ -1757,14 +1818,9 @@
                                   const summary = getCounterStaffSummary(rec, expectedCount);
                                   if (summary.isComplete) { branchSum += summary.avgScore; branchCount++; }
                                   
-                                  const evals = Object.keys(rec?.evaluations || {}).filter(k => rec.evaluations[k].isComplete).map(k => {
-                                    const sum = Object.values(rec.evaluations[k].scores).reduce((a,b)=>a+b,0);
-                                    return { name: k, score: sum/5 };
-                                  });
-                                  
-                                  const ev1 = evals[0] ? evals[0].name : '-'; const s1 = evals[0] ? evals[0].score : '-';
-                                  const ev2 = evals[1] ? evals[1].name : '-'; const s2 = evals[1] ? evals[1].score : '-';
-                                  const ev3 = evals[2] ? evals[2].name : '-'; const s3 = evals[2] ? evals[2].score : '-';
+                                  const ev1 = evaluators[0]; const ev1Data = ev1 ? rec?.evaluations?.[ev1.name] : null; const s1 = (ev1Data && ev1Data.isComplete) ? (Object.values(ev1Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
+                                  const ev2 = evaluators[1]; const ev2Data = ev2 ? rec?.evaluations?.[ev2.name] : null; const s2 = (ev2Data && ev2Data.isComplete) ? (Object.values(ev2Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
+                                  const ev3 = evaluators[2]; const ev3Data = ev3 ? rec?.evaluations?.[ev3.name] : null; const s3 = (ev3Data && ev3Data.isComplete) ? (Object.values(ev3Data.scores).reduce((a,b)=>a+b,0)/5) : '-';
 
                                   rows.push(
                                     <tr key={`${brand}-${branch}-${staff}`} className="border-b border-slate-100 hover:bg-white transition-colors">
@@ -1774,11 +1830,11 @@
                                       <td className="p-3 text-center">
                                         {summary.isComplete ? <span className="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已完成</span> : <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">{summary.evalCount > 0 ? `${summary.evalCount}/${expectedCount}人已評` : '未完成'}</span>}
                                       </td>
-                                      <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev1}</td>
+                                      <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev1 ? ev1.name : '-'}</td>
                                       <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s1}</td>
-                                      <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev2}</td>
+                                      <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev2 ? ev2.name : '-'}</td>
                                       <td className="p-3 text-center text-sm font-bold text-teal-700">{s2}</td>
-                                      <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev3}</td>
+                                      <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev3 ? ev3.name : '-'}</td>
                                       <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s3}</td>
                                       <td className="p-3 text-center font-bold text-sky-700 text-lg border-l border-slate-200">{summary.evalCount > 0 ? summary.avgScore : '-'}</td>
                                       <td className="p-3 text-right font-bold text-orange-600 border-l border-slate-100">{summary.isComplete ? `$${summary.bonus}` : '-'}</td>
