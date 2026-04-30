@@ -222,7 +222,7 @@
           categories: [
             { title: 'A.療程前安全評估', items: [{ id: 'm5_a1', text: '1.雙重病人辨識', isRed: true }, { id: 'm5_a2', text: '2.禁忌症評估（心臟節律器、金屬植入物）', isRed: true }, { id: 'm5_a3', text: '3.治療部位與能量設定確認', isRed: false }] },
             { title: 'B 設備與耗材安全', items: [{ id: 'm5_b1', text: '1.設備校正與保養紀錄', isRed: false }, { id: 'm5_b2', text: '2.探頭／耗材效期確認', isRed: false }, { id: 'm5_b3', text: '3.導電介質使用正確', isRed: false }] },
-            { title: 'C 療程中操作安全', items: [{ id: 'm5_c1', text: '1.能量輸出依醫囑設定', isRed: false }, { id: 'm5_c2', text: '2.持續詢問病人感受', isRed: false }, { id: 'm5_c3', text: '3.皮膚即時反應監測', isRed: false }] },
+            { title: 'C 療程中操作安全', items: [{ id: 'm5_c1', text: '1.能量輸出依醫囑設定', isRed: false }, { id: 'm5_c2', text: '2.持续詢問病人感受', isRed: false }, { id: 'm5_c3', text: '3.皮膚即時反應監測', isRed: false }] },
             { title: 'D 燙傷與併發症預防', items: [{ id: 'm5_d1', text: '1.避免同點重複施打', isRed: false }, { id: 'm5_d2', text: '2.異常紅腫立即停機回報', isRed: false }] },
             { title: 'E 術後照護與紀錄', items: [{ id: 'm5_e1', text: '1.術後護理與防曬說明', isRed: false }, { id: 'm5_e2', text: '2.併發症回診警訊說明', isRed: false }, { id: 'm5_e3', text: '3.療程紀錄完整', isRed: false }, { id: 'm5_e4', text: '4.已確認顧客藥物過敏史及若診所領取給藥須完成用藥衛教', isRed: true }, { id: 'm5_e5', text: '5.已開立處方籤(拍照上傳至紀錄)並說明至合作藥局領藥流程', isRed: true }] }
           ]
@@ -591,7 +591,7 @@
             });
           } else {
             fileName = `櫃台評核進度_${dashMonth}`;
-            excelData.push(['品牌', '分院', '姓名', '職稱', '進度狀態', '評核人1', '評分1', '評核人2', '評分2', '評核人3', '評分3', '最終平均', '達成獎金(NT$)']);
+            excelData.push(['品牌', '分院', '姓名', '職稱', '進度狀態', '評核人1', '評分1', '評核人2', '評分2', '評核人3', '評分3', '評核人4', '評分4', '最終平均', '達成獎金(NT$)']);
             
             COUNTER_BRANDS.forEach(brand => {
               COUNTER_BRANCHES[brand].forEach(branch => {
@@ -611,16 +611,17 @@
                     return { name: k, score: sum/5 };
                   });
                   
-                  const ev1 = evals[0] ? evals[0].name : '-'; const s1 = evals[0] ? evals[0].score : '-';
-                  const ev2 = evals[1] ? evals[1].name : '-'; const s2 = evals[1] ? evals[1].score : '-';
-                  const ev3 = evals[2] ? evals[2].name : '-'; const s3 = evals[2] ? evals[2].score : '-';
+                  const ev1 = evals[0] ? `${evals[0].name}` : '-'; const s1 = evals[0] ? evals[0].score : '-';
+                  const ev2 = evals[1] ? `${evals[1].name}` : '-'; const s2 = evals[1] ? evals[1].score : '-';
+                  const ev3 = evals[2] ? `${evals[2].name}` : '-'; const s3 = evals[2] ? evals[2].score : '-';
+                  const ev4 = evals[3] ? `${evals[3].name}` : '-'; const s4 = evals[3] ? evals[3].score : '-';
 
                   const statusText = summary.isComplete ? '已完成' : (summary.evalCount > 0 ? `${summary.evalCount}/${expectedCount}人已評` : '未完成');
                   const bonusText = summary.isComplete ? `$${summary.bonus}` : '-';
 
                   excelData.push([
                     brand, branch, staff, '客服櫃台', statusText,
-                    ev1, s1, ev2, s2, ev3, s3,
+                    ev1, s1, ev2, s2, ev3, s3, ev4, s4,
                     summary.evalCount > 0 ? summary.avgScore : '-',
                     bonusText
                   ]);
@@ -633,7 +634,7 @@
                   excelData.push([
                     brand, branch, dirInfo.name, '主任', 
                     branchCount > 0 ? '已結算' : '待結算',
-                    '', '', '', '', '', '',
+                    '', '', '', '', '', '', '', '',
                     branchCount > 0 ? dirAvg : '-',
                     dirBonus ? `$${dirBonus}` : '-'
                   ]);
@@ -1493,7 +1494,7 @@
                       <div className="bg-slate-700 p-3 text-white flex justify-between items-center flex-wrap gap-2">
                         <div className="font-bold text-lg flex-1">{section.title}</div>
                         <div className="flex items-center gap-3">
-                          <button onClick={() => { if(!isSafetyDisabled){ setSafetyData(prev => { const n={...prev}; section.categories.forEach(c=>c.items.forEach(i=>n[i.id]='pass')); return n; }); } }} className="text-xs bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded font-bold no-print transition">✅ 區塊全數合格</button>
+                          <button onClick={() => { if(!isSafetyDisabled){ setSafetyData(prev => { const n={...prev}; section.categories.forEach(c=>c.items.forEach(i=>n[i.id]='pass')); return n; }); } }} className="text-xs bg-emerald-50 hover:bg-emerald-600 px-3 py-1.5 rounded font-bold no-print transition">✅ 區塊全數合格</button>
                           <div className="flex items-center gap-2 bg-slate-800/50 px-2 py-1 rounded"><label className="text-xs text-slate-200">評核日期</label><input disabled={isSafetyDisabled} type="date" value={safetySignatures.sectionDates[sIndex] || ''} onChange={e => setSafetySignatures({...safetySignatures, sectionDates: {...safetySignatures.sectionDates, [sIndex]: e.target.value}})} className="border-none rounded px-1.5 py-1 text-xs text-slate-800 bg-slate-100 min-w-[110px] focus:outline-none focus:bg-white transition" /></div>
                         </div>
                       </div>
@@ -1624,6 +1625,8 @@
                         <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分2</th>
                         <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人3</th>
                         <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分3</th>
+                        <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人4</th>
+                        <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分4</th>
                         <th className="p-3 border-b border-slate-200 text-center font-bold text-sky-700">最終平均</th>
                         <th className="p-3 border-b border-slate-200 text-right font-bold text-orange-600">達成獎金</th>
                       </tr>
@@ -1655,9 +1658,10 @@
                                 return { name: k, score: sum/5 };
                               });
                               
-                              const ev1 = evals[0] ? evals[0].name : '-'; const s1 = evals[0] ? evals[0].score : '-';
-                              const ev2 = evals[1] ? evals[1].name : '-'; const s2 = evals[1] ? evals[1].score : '-';
-                              const ev3 = evals[2] ? evals[2].name : '-'; const s3 = evals[2] ? evals[2].score : '-';
+                              const ev1 = evals[0] ? `${evals[0].name}` : '-'; const s1 = evals[0] ? evals[0].score : '-';
+                              const ev2 = evals[1] ? `${evals[1].name}` : '-'; const s2 = evals[1] ? evals[1].score : '-';
+                              const ev3 = evals[2] ? `${evals[2].name}` : '-'; const s3 = evals[2] ? evals[2].score : '-';
+                              const ev4 = evals[3] ? `${evals[3].name}` : '-'; const s4 = evals[3] ? evals[3].score : '-';
 
                               rows.push(
                                 <tr key={`${brand}-${branch}-${staff}`} className="border-b border-slate-100 hover:bg-white transition-colors">
@@ -1674,6 +1678,8 @@
                                   <td className="p-3 text-center text-sm font-bold text-teal-700">{s2}</td>
                                   <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev3}</td>
                                   <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s3}</td>
+                                  <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev4}</td>
+                                  <td className="p-3 text-center text-sm font-bold text-teal-700">{s4}</td>
                                   <td className="p-3 text-center font-bold text-sky-700 text-lg border-l border-slate-200">{summary.evalCount > 0 ? summary.avgScore : '-'}</td>
                                   <td className="p-3 text-right font-bold text-orange-600 border-l border-slate-100">{summary.isComplete ? `$${summary.bonus}` : '-'}</td>
                                 </tr>
@@ -1688,7 +1694,7 @@
                                    <td className="p-3 font-bold text-indigo-900">{dirInfo.name}</td>
                                    <td className="p-3 font-bold text-indigo-700 text-sm">該店主任</td>
                                    <td className="p-3 text-center">{branchCount > 0 ? <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已結算</span> : <span className="text-slate-400 text-xs font-bold">待結算</span>}</td>
-                                   <td colSpan="6" className="p-3 text-center text-slate-500 text-xs tracking-widest font-bold border-l border-slate-200">── 此為該店所有櫃台平均，不作單獨評分 ──</td>
+                                   <td colSpan="8" className="p-3 text-center text-slate-500 text-xs tracking-widest font-bold border-l border-slate-200">── 此為該店所有櫃台平均，不作單獨評分 ──</td>
                                    <td className="p-3 text-center font-bold text-sky-800 text-lg border-l border-slate-200">{branchCount > 0 ? dirAvg : '-'}</td>
                                    <td className="p-3 text-right font-bold text-orange-700 text-lg border-l border-slate-200">{branchCount > 0 ? '$' + calculateDirectorBonus(dirAvg) : '-'}</td>
                                  </tr>
@@ -1808,6 +1814,8 @@
                               <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分2</th>
                               <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人3</th>
                               <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分3</th>
+                              <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人4</th>
+                              <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分4</th>
                               <th className="p-3 border-b border-slate-200 text-center font-bold text-sky-700">最終平均</th>
                               <th className="p-3 border-b border-slate-200 text-right font-bold text-orange-600">達成獎金</th>
                             </tr>
@@ -1839,9 +1847,10 @@
                                     return { name: k, score: sum/5 };
                                   });
                                   
-                                  const ev1 = evals[0] ? evals[0].name : '-'; const s1 = evals[0] ? evals[0].score : '-';
-                                  const ev2 = evals[1] ? evals[1].name : '-'; const s2 = evals[1] ? evals[1].score : '-';
-                                  const ev3 = evals[2] ? evals[2].name : '-'; const s3 = evals[2] ? evals[2].score : '-';
+                                  const ev1 = evals[0] ? `${evals[0].name}` : '-'; const s1 = evals[0] ? evals[0].score : '-';
+                                  const ev2 = evals[1] ? `${evals[1].name}` : '-'; const s2 = evals[1] ? evals[1].score : '-';
+                                  const ev3 = evals[2] ? `${evals[2].name}` : '-'; const s3 = evals[2] ? evals[2].score : '-';
+                                  const ev4 = evals[3] ? `${evals[3].name}` : '-'; const s4 = evals[3] ? evals[3].score : '-';
 
                                   rows.push(
                                     <tr key={`${brand}-${branch}-${staff}`} className="border-b border-slate-100 hover:bg-white transition-colors">
@@ -1857,6 +1866,8 @@
                                       <td className="p-3 text-center text-sm font-bold text-teal-700">{s2}</td>
                                       <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev3}</td>
                                       <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s3}</td>
+                                      <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev4}</td>
+                                      <td className="p-3 text-center text-sm font-bold text-teal-700">{s4}</td>
                                       <td className="p-3 text-center font-bold text-sky-700 text-lg border-l border-slate-200">{summary.evalCount > 0 ? summary.avgScore : '-'}</td>
                                       <td className="p-3 text-right font-bold text-orange-600 border-l border-slate-100">{summary.isComplete ? `$${summary.bonus}` : '-'}</td>
                                     </tr>
@@ -1871,7 +1882,7 @@
                                        <td className="p-3 font-bold text-indigo-900">{dirInfo.name}</td>
                                        <td className="p-3 font-bold text-indigo-700 text-sm">該店主任</td>
                                        <td className="p-3 text-center">{branchCount > 0 ? <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已結算</span> : <span className="text-slate-400 text-xs font-bold">待結算</span>}</td>
-                                       <td colSpan="6" className="p-3 text-center text-slate-500 text-xs tracking-widest font-bold border-l border-slate-200">── 此為該店所有櫃台平均，不作單獨評分 ──</td>
+                                       <td colSpan="8" className="p-3 text-center text-slate-500 text-xs tracking-widest font-bold border-l border-slate-200">── 此為該店所有櫃台平均，不作單獨評分 ──</td>
                                        <td className="p-3 text-center font-bold text-sky-800 text-lg border-l border-slate-200">{branchCount > 0 ? dirAvg : '-'}</td>
                                        <td className="p-3 text-right font-bold text-orange-700 text-lg border-l border-slate-200">{branchCount > 0 ? '$' + calculateDirectorBonus(dirAvg) : '-'}</td>
                                      </tr>
