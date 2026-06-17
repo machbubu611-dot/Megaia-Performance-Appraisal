@@ -5,31 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>醫美集團全方位評核系統</title>
   
-  <!-- 載入 Tailwind CSS -->
+  <!-- 💡 全域防呆捕捉機制：如果有錯誤，直接顯示在畫面上，不再白畫面 -->
+  <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+      const root = document.getElementById('root');
+      if (root && root.innerHTML === '') {
+        root.innerHTML = `
+          <div style="color:#b91c1c; padding:30px; text-align:center; font-family:sans-serif; background-color:#fef2f2; min-height:100vh;">
+            <h1 style="font-size:24px; font-weight:bold; margin-bottom:10px;">⚠️ 系統載入發生嚴重錯誤</h1>
+            <p style="font-size:16px;">錯誤訊息: ${message}</p>
+            <p style="font-size:14px; margin-top:10px; color:#7f1d1d;">發生於第 ${lineno} 行，第 ${colno} 列</p>
+            <p style="font-size:14px; margin-top:20px; color:#991b1b;">💡 建議：請將此畫面截圖提供給開發人員進行排查。</p>
+          </div>
+        `;
+      }
+    };
+  </script>
+
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- 載入 React 與 Babel (全域版本) -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- 載入 React (全域版本) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   
-  <!-- 載入截圖與 PDF 套件 -->
+  <!-- 🏆 核心修復：降級至 Babel 7.18.2，此版本的原生預設就是 Classic 模式，絕對不產生 import 衝突 -->
+  <script src="https://unpkg.com/@babel/standalone@7.18.2/babel.min.js"></script>
+  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <!-- 載入 Excel 匯出套件 (SheetJS) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-  <!-- 使用 Import Map 統一控管所有 ES6 模組路徑，完美解決 Babel 衝突 -->
-  <script type="importmap">
-  {
-    "imports": {
-      "react/jsx-runtime": "data:text/javascript;charset=utf-8,export%20const%20jsx%20%3D%20window.React.createElement%3Bexport%20const%20jsxs%20%3D%20window.React.createElement%3Bexport%20const%20Fragment%20%3D%20window.React.Fragment%3B",
-      "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
-      "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
-      "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"
-    }
-  }
-  </script>
+  <!-- 🏆 核心修復：使用 Firebase 傳統相容版 (Compat)，完全移除 module，保證 GitHub 順暢運行 -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
 
   <style>
     .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -55,22 +64,22 @@
       body * { visibility: hidden; }
       .no-print { display: none !important; }
       .print-panel, .print-panel * { visibility: visible; }
-      .print-panel { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; box-shadow: none; background-color: #f8fafc !important; }
+      .print-panel { 
+        position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; 
+        box-shadow: none; background-color: #f8fafc !important; 
+      }
       @page { margin: 1cm; }
     }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans">
   
+  <!-- 系統掛載點 -->
   <div id="root"></div>
 
-  <!-- 加上 data-type="module"，告訴 Babel 輸出 ES 模組，讓 import 語法能原生運行 -->
-  <script type="text/babel" data-type="module">
-    import { initializeApp } from "firebase/app";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
-    import { getFirestore, collection, doc, setDoc, onSnapshot } from "firebase/firestore";
-
-    const { useState, useEffect } = window.React;
+  <!-- 主程式區塊，乾淨的 Babel 編譯 -->
+  <script type="text/babel">
+    const { useState, useEffect } = React;
 
     // --- 0. Firebase 初始化與設定 ---
     const firebaseConfig = {
@@ -79,13 +88,14 @@
       projectId: "megaia-performance-appraisal",
       storageBucket: "megaia-performance-appraisal.firebasestorage.app",
       messagingSenderId: "905737606701",
-      appId: "1:905737606701:web:018f30783156f2b7d20aa4",
-      measurementId: "G-NSZT37EZ12"
+      appId: "1:905737606701:web:018f30783156f2b7d20aa4"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const auth = firebase.auth();
+    const db = firebase.firestore();
     const appId = 'megaia-appraisal'; 
 
     const DEFAULT_PASSWORDS = {
@@ -94,17 +104,23 @@
 
     // --- 1. 月份生成 ---
     const generateMonths = () => {
-      const months = []; const start = new Date(2026, 0); const today = new Date();
-      const end = new Date(today.getFullYear(), today.getMonth() + 1, 1); 
+      const months = []; 
+      const start = new Date(2026, 0); 
+      const end = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1); 
       let current = new Date(start);
       while (current <= end) {
-        const yyyy = current.getFullYear(); const mm = String(current.getMonth() + 1).padStart(2, '0');
-        months.push(`${yyyy}-${mm}`); current.setMonth(current.getMonth() + 1);
+        const yyyy = current.getFullYear(); 
+        const mm = String(current.getMonth() + 1).padStart(2, '0');
+        months.push(`${yyyy}-${mm}`); 
+        current.setMonth(current.getMonth() + 1);
       }
       return months;
     };
     const MONTHS = generateMonths();
-    const DEFAULT_MONTH = (() => { const today = new Date(); return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`; })();
+    const DEFAULT_MONTH = (() => { 
+      const d = new Date(); 
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; 
+    })();
 
     // --- 2. 系統名單資料庫 ---
     const DEFAULT_ROSTERS = {
@@ -160,51 +176,170 @@
 
     const SAFETY_SECTIONS = [
       {
-        id: 'sec-0', title: '一.手術&微整無菌操作稽核表',
+        id: 'sec-0', title: '一.手術與微整無菌操作稽核表',
         categories: [
-          { title: 'A 進房前準備', items: [{ id: 'm1_a1', text: '1.環境整潔、無雜物、已完成消毒', isRed: false }, { id: 'm1_a2', text: '2.確實檢查無菌包有效期限與封口完整', isRed: true }, { id: 'm1_a3', text: '3.器械分類擺放正確（清潔 / 污染分明）', isRed: false }, { id: 'm1_a4', text: '4.個人防護具配戴完整（口罩、帽子）', isRed: false }, { id: 'm1_a5', text: '5.手術床及靠枕無菌舖單覆蓋完整性', isRed: false }] },
-          { title: 'B 洗手與穿脫無菌衣/手套', items: [{ id: 'm1_b1', text: '1.正確執行外科手消（流程完整）', isRed: true }, { id: 'm1_b2', text: '2.開啟無菌衣方式正確、無污染', isRed: false }, { id: 'm1_b3', text: '3.戴手套流程正確（closed method）', isRed: false }, { id: 'm1_b4', text: '4.手套未接觸口罩/面罩等污染區', isRed: false }, { id: 'm1_b5', text: '5.手套穿戴後保持於胸前、未垂落', isRed: true }] },
-          { title: 'C 手術/微整跟診中的無菌操作', items: [{ id: 'm1_c1', text: '1.維持手術台與無菌區高度一致', isRed: false }, { id: 'm1_c2', text: '2.器械使用未跨過污染區', isRed: false }, { id: 'm1_c3', text: '3.手術(水優/酒優/克菌寧)/微整注射前皮膚消毒正確( 克菌寧由內而外≧2次 )', isRed: true }, { id: 'm1_c4', text: '4.協助手法正確，不跨越無菌區', isRed: false }, { id: 'm1_c5', text: '5.針具未接觸污染物', isRed: false }, { id: 'm1_c6', text: '6.廢針即時丟入利器盒(尖銳及針具數量正確)', isRed: true }, { id: 'm1_c7', text: '7.操作過程未觸碰未消毒區域', isRed: false }] },
-          { title: 'D 手術後收尾無菌流程', items: [{ id: 'm1_d1', text: '1.器械回收數量正確', isRed: false }, { id: 'm1_d2', text: '2.無菌包準備內容正確(器械+包布)', isRed: false }, { id: 'm1_d3', text: '3.廢棄物分類（一般 / 感染性）正確', isRed: false }, { id: 'm1_d4', text: '4.手術床、桌面及燈把確實消毒', isRed: false }] },
-          { title: 'E 紀錄與完整性', items: [{ id: 'm1_e1', text: '1.手術記錄 / 物品使用表完整填寫', isRed: true }, { id: 'm1_e2', text: '2.環境恢復整潔、依標準完成', isRed: false }] }
+          { title: 'A 進房前準備', items: [
+            { id: 'm1_a1', text: '1.環境整潔、無雜物、已完成消毒', isRed: false },
+            { id: 'm1_a2', text: '2.確實檢查無菌包有效期限與封口完整', isRed: true },
+            { id: 'm1_a3', text: '3.器械分類擺放正確（清潔/污染分明）', isRed: false },
+            { id: 'm1_a4', text: '4.個人防護具配戴完整（口罩、帽子）', isRed: false },
+            { id: 'm1_a5', text: '5.手術床及靠枕無菌舖單覆蓋完整性', isRed: false }
+          ]},
+          { title: 'B 洗手與穿脫無菌衣/手套', items: [
+            { id: 'm1_b1', text: '1.正確執行外科手消（流程完整）', isRed: true },
+            { id: 'm1_b2', text: '2.開啟無菌衣方式正確、無污染', isRed: false },
+            { id: 'm1_b3', text: '3.戴手套流程正確（closed method）', isRed: false },
+            { id: 'm1_b4', text: '4.手套未接觸口罩/面罩等污染區', isRed: false },
+            { id: 'm1_b5', text: '5.手套穿戴後保持於胸前、未垂落', isRed: true }
+          ]},
+          { title: 'C 手術/微整跟診中的無菌操作', items: [
+            { id: 'm1_c1', text: '1.維持手術台與無菌區高度一致', isRed: false },
+            { id: 'm1_c2', text: '2.器械使用未跨過污染區', isRed: false },
+            { id: 'm1_c3', text: '3.手術/微整注射前皮膚消毒正確', isRed: true },
+            { id: 'm1_c4', text: '4.協助手法正確，不跨越無菌區', isRed: false },
+            { id: 'm1_c5', text: '5.針具未接觸污染物', isRed: false },
+            { id: 'm1_c6', text: '6.廢針即時丟入利器盒(數量正確)', isRed: true },
+            { id: 'm1_c7', text: '7.操作過程未觸碰未消毒區域', isRed: false }
+          ]},
+          { title: 'D 手術後收尾無菌流程', items: [
+            { id: 'm1_d1', text: '1.器械回收數量正確', isRed: false },
+            { id: 'm1_d2', text: '2.無菌包準備正確(器械+包布)', isRed: false },
+            { id: 'm1_d3', text: '3.廢棄物分類正確', isRed: false },
+            { id: 'm1_d4', text: '4.手術床、桌面及燈把確實消毒', isRed: false }
+          ]},
+          { title: 'E 紀錄與完整性', items: [
+            { id: 'm1_e1', text: '1.手術記錄/物品使用表填寫', isRed: true },
+            { id: 'm1_e2', text: '2.環境恢復整潔', isRed: false }
+          ]}
         ]
       },
       {
         id: 'sec-1', title: '二.手術紀錄書寫檢視表單',
         categories: [
-          { title: 'A 手術、麻醉同意書檢視', items: [{ id: 'm2_a1', text: '1.病人基本資料填寫完整', isRed: false }, { id: 'm2_a2', text: '2.手術名稱與實際執行一致', isRed: true }, { id: 'm2_a3', text: '3.風險、副作用、替代方案說明完整', isRed: false }, { id: 'm2_a4', text: '4.麻醉方式記載清楚', isRed: false }, { id: 'm2_a5', text: '5.顧客簽名', isRed: true }, { id: 'm2_a6', text: '6.醫師簽名', isRed: true }, { id: 'm2_a7', text: '7.日期時間填寫完整', isRed: false }] },
-          { title: 'B 手術紀錄單檢視', items: [{ id: 'm2_b1', text: '1.術前注意事項同意書', isRed: true }, { id: 'm2_b2', text: '2.手術評估表', isRed: true }, { id: 'm2_b3', text: '3.麻醉前評估單', isRed: true }, { id: 'm2_b4', text: '4.手術前準備紀錄表', isRed: true }, { id: 'm2_b5', text: '5.輸血同意書', isRed: true }, { id: 'm2_b6', text: '6.手術紀錄書寫完整', isRed: true }, { id: 'm2_b7', text: '7.使用器械／尖銳及紗布計數／植入物+保固卡完整性填寫/引流管', isRed: true }, { id: 'm2_b8', text: '8.出血量、特殊情況記錄', isRed: true }, { id: 'm2_b9', text: '9.術後處置與醫囑紀錄(給藥紀錄及口服藥拍照上傳)', isRed: true }, { id: 'm2_b10', text: '10.檢體(脂肪液)拍照', isRed: true }, { id: 'm2_b11', text: '11.恢復室紀錄書寫完整(生命徵象)', isRed: true }, { id: 'm2_b12', text: '12.管制藥品確認餘量及填寫表單確實', isRed: true }] },
-          { title: 'C 醫師紀錄檢視', items: [{ id: 'm2_c1', text: '1.手術前諮紀錄完整', isRed: true }, { id: 'm2_c2', text: '2.手術描述', isRed: false }, { id: 'm2_c3', text: '3.醫師簽名與日期', isRed: true }] }
+          { title: 'A 手術、麻醉同意書檢視', items: [
+            { id: 'm2_a1', text: '1.病人基本資料填寫完整', isRed: false },
+            { id: 'm2_a2', text: '2.手術名稱與實際執行一致', isRed: true },
+            { id: 'm2_a3', text: '3.風險、副作用說明完整', isRed: false },
+            { id: 'm2_a4', text: '4.麻醉方式記載清楚', isRed: false },
+            { id: 'm2_a5', text: '5.顧客簽名', isRed: true },
+            { id: 'm2_a6', text: '6.醫師簽名', isRed: true },
+            { id: 'm2_a7', text: '7.日期時間填寫完整', isRed: false }
+          ]},
+          { title: 'B 手術紀錄單檢視', items: [
+            { id: 'm2_b1', text: '1.術前注意事項同意書', isRed: true },
+            { id: 'm2_b2', text: '2.手術評估表', isRed: true },
+            { id: 'm2_b3', text: '3.麻醉前評估單', isRed: true },
+            { id: 'm2_b4', text: '4.手術前準備紀錄表', isRed: true },
+            { id: 'm2_b5', text: '5.輸血同意書', isRed: true },
+            { id: 'm2_b6', text: '6.手術紀錄書寫完整', isRed: true },
+            { id: 'm2_b7', text: '7.器械/紗布計數填寫', isRed: true },
+            { id: 'm2_b8', text: '8.出血量、特殊情況記錄', isRed: true },
+            { id: 'm2_b9', text: '9.術後處置與醫囑紀錄', isRed: true },
+            { id: 'm2_b10', text: '10.檢體拍照', isRed: true },
+            { id: 'm2_b11', text: '11.恢復室紀錄書寫完整', isRed: true },
+            { id: 'm2_b12', text: '12.管制藥品餘量填寫', isRed: true }
+          ]},
+          { title: 'C 醫師紀錄檢視', items: [
+            { id: 'm2_c1', text: '1.手術前諮紀錄完整', isRed: true },
+            { id: 'm2_c2', text: '2.手術描述', isRed: false },
+            { id: 'm2_c3', text: '3.醫師簽名與日期', isRed: true }
+          ]}
         ]
       },
       {
         id: 'sec-2', title: '三.管制藥品管理稽核表',
         categories: [
-          { title: 'A.管制藥品基本管理', items: [{ id: 'm3_a1', text: '1.管制藥品有指定專責管理人', isRed: false }, { id: 'm3_a2', text: '2.管制藥品清冊建立且更新', isRed: false }, { id: 'm3_a3', text: '3.藥品來源合法且文件齊全', isRed: true }] },
-          { title: 'B 存放與保管安全', items: [{ id: 'm3_b1', text: '1.管制藥品上鎖專櫃存放', isRed: false }, { id: 'm3_b2', text: '2.鑰匙/密碼由專人管理', isRed: false }, { id: 'm3_b3', text: '3.存放環境溫度與安全符合規範', isRed: false }] },
-          { title: 'C 使用與調劑安全', items: [{ id: 'm3_c1', text: '1.依醫師醫囑使用', isRed: false }, { id: 'm3_c2', text: '2.使用前進行藥品 Double Check', isRed: false }, { id: 'm3_c3', text: '3.劑量、病人、時間紀錄正確', isRed: true }] },
-          { title: 'D 盤點與帳務一致性', items: [{ id: 'm3_d1', text: '1.定期盤點（至少每月）', isRed: true }, { id: 'm3_d2', text: '2.帳冊數量與實際數量一致', isRed: true }, { id: 'm3_d3', text: '3.異常差異有即時通報與說明', isRed: false }] },
-          { title: 'E 報廢、遺失與異常通報', items: [{ id: 'm3_e1', text: '1.過期藥品依規定報廢', isRed: false }, { id: 'm3_e2', text: '2.遺失或短缺依規定通報', isRed: false }, { id: 'm3_e3', text: '3.相關紀錄完整保存', isRed: true }] }
+          { title: 'A.管制藥品基本管理', items: [
+            { id: 'm3_a1', text: '1.有指定專責管理人', isRed: false },
+            { id: 'm3_a2', text: '2.清冊建立且更新', isRed: false },
+            { id: 'm3_a3', text: '3.藥品來源合法且文件齊全', isRed: true }
+          ]},
+          { title: 'B 存放與保管安全', items: [
+            { id: 'm3_b1', text: '1.上鎖專櫃存放', isRed: false },
+            { id: 'm3_b2', text: '2.鑰匙/密碼專人管理', isRed: false },
+            { id: 'm3_b3', text: '3.存放環境溫控規範', isRed: false }
+          ]},
+          { title: 'C 使用與調劑安全', items: [
+            { id: 'm3_c1', text: '1.依醫囑使用', isRed: false },
+            { id: 'm3_c2', text: '2.使用前檢查', isRed: false },
+            { id: 'm3_c3', text: '3.劑量、病人、時間紀錄正確', isRed: true }
+          ]},
+          { title: 'D 盤點與帳務一致性', items: [
+            { id: 'm3_d1', text: '1.定期盤點（每月）', isRed: true },
+            { id: 'm3_d2', text: '2.帳冊數量與實際一致', isRed: true },
+            { id: 'm3_d3', text: '3.差異即時通報說明', isRed: false }
+          ]},
+          { title: 'E 報廢、遺失與異常通報', items: [
+            { id: 'm3_e1', text: '1.過期依規定報廢', isRed: false },
+            { id: 'm3_e2', text: '2.遺失短缺依規定通報', isRed: false },
+            { id: 'm3_e3', text: '3.相關紀錄完整保存', isRed: true }
+          ]}
         ]
       },
       {
         id: 'sec-3', title: '四.微整醫療安全稽核表',
         categories: [
-          { title: 'A.療程前衛教完整性', items: [{ id: 'm4_a1', text: '1.清楚說明療程目的與原理', isRed: false }, { id: 'm4_a2', text: '2.說明適應症與限制', isRed: false }, { id: 'm4_a3', text: '3.說明可能風險與副作用', isRed: false }, { id: 'm4_a4', text: '4.確認顧客理解內容', isRed: false }] },
-          { title: 'B 療程前評估與安全確認', items: [{ id: 'm4_b1', text: '1.雙重病人辨識（姓名／生日）', isRed: true }, { id: 'm4_b2', text: '2.療程項目、部位、劑量再次確認', isRed: true }, { id: 'm4_b3', text: '3.過敏史、藥物史、懷孕史確認', isRed: false }, { id: 'm4_b4', text: '4.禁忌症評估', isRed: false }, { id: 'm4_b5', text: '5.治療部位與能量設定確認', isRed: false }] },
-          { title: 'C 產品與用藥安全(三讀五對)', items: [{ id: 'm4_c1', text: '1.產品來源合法且包裝完整', isRed: false }, { id: 'm4_c2', text: '2.效期、批號記錄完整', isRed: false }, { id: 'm4_c3', text: '3.冷藏產品保存溫控符合規範', isRed: false }, { id: 'm4_c4', text: '4.注射前再次與醫師確認產品', isRed: true }] },
-          { title: 'D 療程中高風險監測', items: [{ id: 'm4_d1', text: '1.即時觀察疼痛、蒼白、紫紺', isRed: false }, { id: 'm4_d2', text: '2.疑似血管阻塞立即停針', isRed: true }, { id: 'm4_d3', text: '3.依SOP啟動緊急處置流程', isRed: false }] },
-          { title: 'E 療程後立即照護與返家注意事項', items: [{ id: 'm4_e1', text: '1.提醒療程後照護與禁忌說明清楚', isRed: true }, { id: 'm4_e2', text: '2.異常警訊與回診說明', isRed: false }, { id: 'm4_e3', text: '3.已確認顧客藥物過敏史及若診所領取給藥須完成用藥衛教', isRed: true }, { id: 'm4_e4', text: '4.已開立處方籤(拍照上傳至紀錄)並說明至合作藥局領藥流程', isRed: true }] }
+          { title: 'A.療程前衛教完整性', items: [
+            { id: 'm4_a1', text: '1.說明療程目的原理', isRed: false },
+            { id: 'm4_a2', text: '2.說明適應症與限制', isRed: false },
+            { id: 'm4_a3', text: '3.說明風險與副作用', isRed: false },
+            { id: 'm4_a4', text: '4.確認顧客理解', isRed: false }
+          ]},
+          { title: 'B 療程前評估與安全確認', items: [
+            { id: 'm4_b1', text: '1.雙重病人辨識', isRed: true },
+            { id: 'm4_b2', text: '2.部位、劑量再次確認', isRed: true },
+            { id: 'm4_b3', text: '3.過敏史、懷孕史確認', isRed: false },
+            { id: 'm4_b4', text: '4.禁忌症評估', isRed: false },
+            { id: 'm4_b5', text: '5.治療部位與設定確認', isRed: false }
+          ]},
+          { title: 'C 產品與用藥安全', items: [
+            { id: 'm4_c1', text: '1.產品來源合法包裝完整', isRed: false },
+            { id: 'm4_c2', text: '2.效期、批號記錄完整', isRed: false },
+            { id: 'm4_c3', text: '3.冷藏產品保存溫控符合', isRed: false },
+            { id: 'm4_c4', text: '4.注射前與醫師確認產品', isRed: true }
+          ]},
+          { title: 'D 療程中高風險監測', items: [
+            { id: 'm4_d1', text: '1.觀察疼痛、蒼白、紫紺', isRed: false },
+            { id: 'm4_d2', text: '2.疑似血管阻塞立即停針', isRed: true },
+            { id: 'm4_d3', text: '3.依SOP啟動處置流程', isRed: false }
+          ]},
+          { title: 'E 療程後立即照護', items: [
+            { id: 'm4_e1', text: '1.提醒照護與禁忌說明', isRed: true },
+            { id: 'm4_e2', text: '2.異常警訊與回診說明', isRed: false },
+            { id: 'm4_e3', text: '3.顧客用藥衛教', isRed: true },
+            { id: 'm4_e4', text: '4.開立處方籤並說明藥局流程', isRed: true }
+          ]}
         ]
       },
       {
         id: 'sec-4', title: '五.電音波醫療安全稽核表',
         categories: [
-          { title: 'A.療程前安全評估', items: [{ id: 'm5_a1', text: '1.雙重病人辨識', isRed: true }, { id: 'm5_a2', text: '2.禁忌症評估（心臟節律器、金屬植入物）', isRed: true }, { id: 'm5_a3', text: '3.治療部位與能量設定確認', isRed: false }] },
-          { title: 'B 設備與耗材安全', items: [{ id: 'm5_b1', text: '1.設備校正與保養紀錄', isRed: false }, { id: 'm5_b2', text: '2.探頭／耗材效期確認', isRed: false }, { id: 'm5_b3', text: '3.導電介質使用正確', isRed: false }] },
-          { title: 'C 療程中操作安全', items: [{ id: 'm5_c1', text: '1.能量輸出依醫囑設定', isRed: false }, { id: 'm5_c2', text: '2.持續詢問病人感受', isRed: false }, { id: 'm5_c3', text: '3.皮膚即時反應監測', isRed: false }] },
-          { title: 'D 燙傷與併發症預防', items: [{ id: 'm5_d1', text: '1.避免同點重複施打', isRed: false }, { id: 'm5_d2', text: '2.異常紅腫立即停機回報', isRed: false }] },
-          { title: 'E 術後照護與紀錄', items: [{ id: 'm5_e1', text: '1.術後護理與防曬說明', isRed: false }, { id: 'm5_e2', text: '2.併發症回診警訊說明', isRed: false }, { id: 'm5_e3', text: '3.療程紀錄完整', isRed: false }, { id: 'm5_e4', text: '4.已確認顧客藥物過敏史及若診所領取給藥須完成用藥衛教', isRed: true }, { id: 'm5_e5', text: '5.已開立處方籤(拍照上傳至紀錄)並說明至合作藥局領藥流程', isRed: true }] }
+          { title: 'A.療程前安全評估', items: [
+            { id: 'm5_a1', text: '1.雙重病人辨識', isRed: true },
+            { id: 'm5_a2', text: '2.禁忌症評估', isRed: true },
+            { id: 'm5_a3', text: '3.部位與能量設定確認', isRed: false }
+          ]},
+          { title: 'B 設備與耗材安全', items: [
+            { id: 'm5_b1', text: '1.設備校正與保養紀錄', isRed: false },
+            { id: 'm5_b2', text: '2.探頭效期確認', isRed: false },
+            { id: 'm5_b3', text: '3.導電介質使用正確', isRed: false }
+          ]},
+          { title: 'C 療程中操作安全', items: [
+            { id: 'm5_c1', text: '1.能量輸出依醫囑設定', isRed: false },
+            { id: 'm5_c2', text: '2.持續詢問病人感受', isRed: false },
+            { id: 'm5_c3', text: '3.皮膚即時反應監測', isRed: false }
+          ]},
+          { title: 'D 燙傷與併發症預防', items: [
+            { id: 'm5_d1', text: '1.避免同點重複施打', isRed: false },
+            { id: 'm5_d2', text: '2.異常紅腫立即停機回報', isRed: false }
+          ]},
+          { title: 'E 術後照護與紀錄', items: [
+            { id: 'm5_e1', text: '1.術後護理與防曬說明', isRed: false },
+            { id: 'm5_e2', text: '2.併發症回診警訊說明', isRed: false },
+            { id: 'm5_e3', text: '3.療程紀錄完整', isRed: false },
+            { id: 'm5_e4', text: '4.顧客用藥衛教', isRed: true },
+            { id: 'm5_e5', text: '5.開立處方籤並說明領藥', isRed: true }
+          ]}
         ]
       }
     ];
@@ -212,69 +347,21 @@
     const SAFETY_QUICK_NAV = ['一. 無菌操作', '二. 紀錄書寫', '三. 管制藥品', '四. 微整安全', '五. 電音波安全'];
 
     const MEDICAL_SOP = [
-      { title: '一、目的', content: '確保醫美診所於手術、微整注射及電音波療程中，全面落實病人安全、醫療品質與風險控管。' },
-      { title: '二、適用人員', content: '本診所全體護理人員、醫師及相關醫療工作人員。' },
-      { title: '三、適用範圍', content: '手術療程、微整注射療程、電波／音波等能量型療程／血液淨化。' },
-      { title: '四、作業原則', content: '依循醫療法、醫療安全原則及內部 SOP 執行，確保療程正確、安全與可追溯性。' },
-      { title: '五、護理師醫療安全作業流程', content: '1. 病人辨識與療程確認\n2. 無菌操作與感染控制\n3. 用藥與設備安全確認\n4. 療程中病人安全監測\n5. 術後照護與追蹤\n6. 異常事件通報' },
-      { title: '六、異常事件處理', content: '發生任何醫療安全事件，應立即通報醫師與主管，並完成事件通報與改善追蹤。' }
+      { title: '一、目的', content: '確保醫療品質與風險控管。' },
+      { title: '二、適用人員', content: '全體護理人員、醫師及相關人員。' },
+      { title: '三、適用範圍', content: '手術、微整、電波/音波等療程。' },
+      { title: '四、作業原則', content: '依循醫療法及內部 SOP 執行。' },
+      { title: '五、安全流程', content: '1.辨識 2.無菌 3.用藥 4.監測 5.照護 6.通報' },
+      { title: '六、異常事件處理', content: '立即通報醫師與主管，並完成追蹤。' }
     ];
 
-    // --- 4-2. 評核題庫 (櫃台部) ---
     const COUNTER_QUESTIONS = [
-      { 
-        id: 'c1', title: '1. 客服櫃台服務品質', type: 'score', desc: '親切禮貌、溝通表達清楚、主動關心與協助客戶，積極維護客情關係，建立顧客與夥伴信賴。',
-        scores: {
-          5: '展現服務熱誠，提供清晰資訊，有效處理複雜或突發情況，讓人感到安心信賴，是團隊的服務典範。',
-          4: '親切互動具專業形象，接待流程順暢，遇複雜情境具基本應變能力。',
-          3: '可確實完成基本工作內容，應對合宜，服務表現接近標準要求。',
-          2: '可配合基本流程操作，面對問題時願意尋求協助，互動表現及專業熟悉度仍有強化空間。',
-          1: '尚未穩定，需持續協助以提升應對能力與服務品質。'
-        }
-      },
-      { 
-        id: 'c2', title: '2. 感恩善念', type: 'score', desc: '以純淨善念，感恩每⼀次遇⾒，打造自己與他人(包括顧客與夥伴)的善循環。',
-        scores: {
-          5: '以自身的行為與態度，營造感恩善念的工作氛圍，感染和帶動團隊間的互助和協作，是團隊氣氛的正向推手。',
-          4: '珍惜與回饋夥伴的協助，經常做對人有幫助的事，經常說對人有幫助的話，以具體行動回饋團隊情誼。',
-          3: '時常看見夥伴的好，感謝夥伴的協助與支持，維持正向交流氛圍。',
-          2: '任何事情都是理所當然。',
-          1: '責怪他人。'
-        }
-      },
-      { 
-        id: 'c3', title: '3. 正向樂觀', type: 'score', desc: '無論遇到什麼挑戰，始終保持高度樂觀，並能主動激勵團隊士氣，成為團隊的精神支柱。',
-        scores: {
-          5: '主提伸出援手，用自己樂觀積極的態度影響和感染身邊的人，讓顧客與夥伴感受到溫暖和勇氣。',
-          4: '主動分享美好和積極經驗，鼓勵與支持夥伴保持樂觀心態。',
-          3: '保持愉悅微笑，面對困難挑戰時保持積極正向，相信一切都有解決的辦法。',
-          2: '遇到問題偶有情緒。',
-          1: '負面思考較多，有時會影響團隊或顧客。'
-        }
-      },
-      { 
-        id: 'c4', title: '4. 互利共好', type: 'score', desc: '無私分享，能換位思考，整合資源，提供多元解決⽅案。',
-        scores: {
-          5: '主動看見團隊的問題或需要，能整合內外部資源，提供多元解決方案，提升效率，實現資源最大化利用。',
-          4: '能換位思考，理解對方需求和困難，從對方角度尋求平衡方案，幫助解決團隊的挑戰或困難。',
-          3: '主動分享經驗和知識，協助夥伴解決基本問題，不求回報。',
-          2: '會嘗試用對自己最好的方式處理。',
-          1: '依喜好做事，不願合作，影響團隊或顧客。'
-        }
-      },
-      { 
-        id: 'c5', title: '5. 持續優化', type: 'score', desc: '持續精進服務，不斷從經驗中創造新可能，為自己與他人(包括顧客與夥伴)累積幸福資本。',
-        scores: {
-          5: '定期回顧與總結工作，探索新方法，主動提出優化方向並執行，開創新的可能性和機會，累積幸福資本。',
-          4: '展現持續學習精神，在夥伴需要時提供實質支持和幫助，建立信任和穩定的合作關係。',
-          3: '主動收集反饋意見，優化與提升自身服務質量。',
-          2: '依照過往經驗下判斷，問題會重覆發生。',
-          1: '隱匿或逃避問題，等著讓他人處理。'
-        }
-      },
-      { 
-        id: 'c6', title: '6. 綜合評語與回饋', type: 'text', desc: '請主管給予夥伴本月的具體表現回饋與建議（此題僅供文字回饋，不列入計分）。'
-      }
+      { id: 'c1', title: '1. 客服櫃台服務品質', type: 'score', desc: '親切禮貌、溝通表達清楚、主動關心與協助客戶。', scores: { 5: '服務典範', 4: '流程順暢', 3: '接近標準要求', 2: '仍有強化空間', 1: '需持續協助' } },
+      { id: 'c2', title: '2. 感恩善念', type: 'score', desc: '以純淨善念，感恩每⼀次遇⾒，打造善循環。', scores: { 5: '團隊正向推手', 4: '實際行動回饋', 3: '維持正向交流', 2: '視為理所當然', 1: '責怪他人' } },
+      { id: 'c3', title: '3. 正向樂觀', type: 'score', desc: '無論遇到什麼挑戰，始終保持高度樂觀。', scores: { 5: '感染身邊的人', 4: '鼓勵夥伴', 3: '積極正向', 2: '偶有情緒', 1: '負面思考較多' } },
+      { id: 'c4', title: '4. 互利共好', type: 'score', desc: '無私分享，能換位思考，整合資源。', scores: { 5: '提供多元方案', 4: '換位思考', 3: '主動分享經驗', 2: '嘗試對自己最好的方式', 1: '依喜好做事' } },
+      { id: 'c5', title: '5. 持續優化', type: 'score', desc: '持續精進服務，不斷從經驗中創造新可能。', scores: { 5: '提出優化並執行', 4: '展現學習精神', 3: '收集反饋意見', 2: '問題會重覆發生', 1: '逃避問題' } },
+      { id: 'c6', title: '6. 綜合評語與回饋', type: 'text', desc: '請主管給予夥伴本月的具體表現回饋與建議。' }
     ];
 
     const getEmptyNursingRecord = () => ({
@@ -355,9 +442,26 @@
         const style = window.getComputedStyle(input);
         
         replacement.style.cssText = `
-          display: flex; align-items: center; justify-content: ${style.textAlign === 'center' || input.classList.contains('text-center') ? 'center' : 'flex-start'};
-          width: ${style.width}; height: ${style.height}; min-height: ${style.minHeight}; padding: ${style.padding}; margin: ${style.margin}; font-size: ${style.fontSize}; font-family: ${style.fontFamily}; font-weight: ${style.fontWeight}; color: ${style.color}; background-color: ${style.backgroundColor}; border: ${style.border}; border-radius: ${style.borderRadius}; box-sizing: border-box; white-space: ${input.tagName.toLowerCase() === 'textarea' ? 'pre-wrap' : 'nowrap'}; overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: ${style.textAlign === 'center' || input.classList.contains('text-center') ? 'center' : 'flex-start'};
+          width: ${style.width};
+          height: ${style.height};
+          min-height: ${style.minHeight};
+          padding: ${style.padding};
+          margin: ${style.margin};
+          font-size: ${style.fontSize};
+          font-family: ${style.fontFamily};
+          font-weight: ${style.fontWeight};
+          color: ${style.color};
+          background-color: ${style.backgroundColor};
+          border: ${style.border};
+          border-radius: ${style.borderRadius};
+          box-sizing: border-box;
+          white-space: ${input.tagName.toLowerCase() === 'textarea' ? 'pre-wrap' : 'nowrap'};
+          overflow: hidden;
         `;
+        
         input.style.setProperty('display', 'none', 'important');
         input.parentNode.insertBefore(replacement, input);
         replacements.push({ original: input, replacement });
@@ -375,13 +479,123 @@
     };
 
     // =========================================================================
+    // 共用表格渲染函式
+    // =========================================================================
+    const generateCounterTableRows = (targetMonth, targetBrand, rostersData, recordsData, dashboardStatus) => {
+      const rows = [];
+      const brandsToRender = targetBrand ? [targetBrand] : COUNTER_BRANDS;
+      
+      brandsToRender.forEach(brand => {
+        COUNTER_BRANCHES[brand].forEach(branch => {
+          if (!rostersData.counter[brand] || !rostersData.counter[brand][branch]) return;
+          
+          let branchSum = 0; 
+          let branchCount = 0;
+          const evaluators = rostersData.counter[brand][branch].evaluators.filter(e => e.active);
+          const expectedCount = evaluators.length;
+          const evaluatees = rostersData.counter[brand][branch].evaluatees.filter(e => e.active);
+          const dirInfo = rostersData.counter[brand][branch].director;
+          const hasDir = dirInfo && dirInfo.active && dirInfo.name;
+          const rowSpanCount = evaluatees.length + (hasDir ? 1 : 0);
+
+          if (rowSpanCount === 0) return;
+
+          evaluatees.forEach((staffObj, sIdx) => {
+            const staff = staffObj.name;
+            const rec = recordsData[targetMonth]?.[brand]?.[branch]?.[staff];
+            const summary = getCounterStaffSummary(rec, expectedCount);
+            if (summary.isComplete) { 
+              branchSum += summary.avgScore; 
+              branchCount++; 
+            }
+            
+            const evals = Object.keys(rec?.evaluations || {}).filter(k => rec.evaluations[k].isComplete).map(k => {
+              const sum = Object.values(rec.evaluations[k].scores).reduce((a,b) => a+b, 0);
+              return { name: k, score: sum/5 };
+            });
+            
+            const ev1 = evals[0] ? `${evals[0].name}` : '-'; const s1 = evals[0] ? evals[0].score : '-';
+            const ev2 = evals[1] ? `${evals[1].name}` : '-'; const s2 = evals[1] ? evals[1].score : '-';
+            const ev3 = evals[2] ? `${evals[2].name}` : '-'; const s3 = evals[2] ? evals[2].score : '-';
+            const ev4 = evals[3] ? `${evals[3].name}` : '-'; const s4 = evals[3] ? evals[3].score : '-';
+
+            rows.push(
+              <tr key={`${brand}-${branch}-${staff}`} className="border-b border-slate-100 hover:bg-white transition-colors">
+                {sIdx === 0 && (
+                  <td rowSpan={rowSpanCount} className="p-3 font-bold text-slate-500 border-r border-slate-200 align-top bg-slate-50">{brand}</td>
+                )}
+                {sIdx === 0 && (
+                  <td rowSpan={rowSpanCount} className="p-3 text-slate-700 border-r border-slate-200 font-bold align-top bg-slate-50">{branch}</td>
+                )}
+                <td className="p-3 text-slate-800 font-medium">{staff}</td>
+                <td className="p-3 text-slate-500 text-sm">客服櫃台</td>
+                <td className="p-3 text-center">
+                  {summary.isComplete ? (
+                    <span className="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已完成</span>
+                  ) : (
+                    <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
+                      {summary.evalCount > 0 ? `${summary.evalCount}/${expectedCount}人已評` : '未完成'}
+                    </span>
+                  )}
+                </td>
+                <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev1}</td>
+                <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s1}</td>
+                <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev2}</td>
+                <td className="p-3 text-center text-sm font-bold text-teal-700">{s2}</td>
+                <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev3}</td>
+                <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s3}</td>
+                <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev4}</td>
+                <td className="p-3 text-center text-sm font-bold text-teal-700">{s4}</td>
+                <td className="p-3 text-center font-bold text-sky-700 text-lg border-l border-slate-200">
+                  {summary.evalCount > 0 ? summary.avgScore : '-'}
+                </td>
+                <td className="p-3 text-right font-bold text-orange-600 border-l border-slate-100">
+                  {summary.isComplete ? `$${summary.bonus}` : '-'}
+                </td>
+              </tr>
+            );
+          });
+
+          if (hasDir) {
+             const dirAvg = branchCount > 0 ? parseFloat((branchSum/branchCount).toFixed(1)) : 0;
+             rows.push(
+               <tr key={`${brand}-${branch}-dir`} className="border-b-2 border-slate-300 bg-indigo-50/40">
+                 {evaluatees.length === 0 && (
+                   <td rowSpan={1} className="p-3 text-slate-700 border-r border-slate-200 font-bold align-top bg-slate-50">{branch}</td>
+                 )}
+                 <td className="p-3 font-bold text-indigo-900">{dirInfo.name}</td>
+                 <td className="p-3 font-bold text-indigo-700 text-sm">該店主任</td>
+                 <td className="p-3 text-center">
+                   {branchCount > 0 ? (
+                     <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已結算</span>
+                   ) : (
+                     <span className="text-slate-400 text-xs font-bold">待結算</span>
+                   )}
+                 </td>
+                 <td colSpan="8" className="p-3 text-center text-slate-500 text-xs tracking-widest font-bold border-l border-slate-200">
+                   ── 此為該店所有櫃台平均，不作單獨評分 ──
+                 </td>
+                 <td className="p-3 text-center font-bold text-sky-800 text-lg border-l border-slate-200">
+                   {branchCount > 0 ? dirAvg : '-'}
+                 </td>
+                 <td className="p-3 text-right font-bold text-orange-700 text-lg border-l border-slate-200">
+                   {branchCount > 0 ? '$' + calculateDirectorBonus(dirAvg) : '-'}
+                 </td>
+               </tr>
+             );
+          }
+        });
+      });
+      return rows;
+    };
+
+    // =========================================================================
     // 主元件 App
     // =========================================================================
     function App() {
       const urlParams = new URLSearchParams(window.location.search);
       const initialAppMode = urlParams.get('app'); 
       const [sysModule, setSysModule] = useState(initialAppMode || 'portal'); 
-      
       const [currentView, setCurrentView] = useState('home'); 
       
       const [user, setUser] = useState(null);
@@ -611,14 +825,13 @@
         window.XLSX.writeFile(workbook, `${fileName}.xlsx`);
       };
 
-      // --- 登入機制 ---
+      // --- 降級登入機制 ---
       useEffect(() => {
         const initAuth = async () => { 
           try { 
-            // 已經使用 Firebase Compat 載入，此處直接使用匿名登入
             await auth.signInAnonymously(); 
           } catch (e) { 
-            console.log("登入連線提示：請確認您的 Firebase 專案已開啟「匿名登入 (Anonymous)」功能。"); 
+            console.error("Firebase 登入失敗:", e); 
           } 
         };
         initAuth();
@@ -629,8 +842,6 @@
       useEffect(() => {
         if (!user || !db) return;
 
-        const errHandler = (err) => console.log("資料讀取中...");
-
         const unsubN = db.collection(`artifacts/${appId}/public/data/assessments`).onSnapshot((snapshot) => {
           const newRecords = {};
           snapshot.forEach(docSnap => {
@@ -640,7 +851,7 @@
             newRecords[month][branch][nurse] = data;
           });
           setNursingRecords(newRecords);
-        }, errHandler);
+        }, (err) => console.error(err));
         
         const unsubC = db.collection(`artifacts/${appId}/public/data/counter_assessments`).onSnapshot((snapshot) => {
           const newRecords = {};
@@ -652,7 +863,7 @@
             newRecords[month][brand][branch][staff] = data;
           });
           setCounterRecords(newRecords);
-        }, errHandler);
+        }, (err) => console.error(err));
         
         const unsubS = db.collection(`artifacts/${appId}/public/data/settings`).onSnapshot((snapshot) => {
           let loadedPasswords = null;
@@ -666,11 +877,11 @@
           if (loadedPasswords) { setPasswords({ ...DEFAULT_PASSWORDS, ...loadedPasswords }); setEditingPasswords({ ...DEFAULT_PASSWORDS, ...loadedPasswords }); }
           if (loadedRosters) { setRosters(loadedRosters); }
           if (loadedDashboardStatus) { setDashboardStatus(loadedDashboardStatus); }
-        }, errHandler);
+        }, (err) => console.error(err));
+        
         return () => { unsubN(); unsubC(); unsubS(); }
       }, [user]);
 
-      // 櫃台表單自動解鎖邏輯
       const checkCounterAutoCompleted = (month) => {
         if (!month) return false;
         let hasAnyEvaluatee = false;
@@ -707,7 +918,7 @@
         setDashboardStatus(newStatus);
         if (db && user) {
           try { await db.doc(`artifacts/${appId}/public/data/settings/dashboardStatus`).set(newStatus); } 
-          catch (e) { console.log(e); }
+          catch (e) { console.error(e); }
         }
       };
 
@@ -913,7 +1124,12 @@
             if (type === 'service') { newServiceData = getEmptyNursingRecord().serviceData; newServiceSigs = getEmptyNursingRecord().serviceSignatures; setServiceData(newServiceData); setServiceSignatures(newServiceSigs); setAuthRole('self'); newIsSrvComplete = false; } 
             else if (type === 'safety') { newSafetyData = {}; newSafetySigs = getEmptyNursingRecord().safetySignatures; setSafetyData(newSafetyData); setSafetySignatures(newSafetySigs); newIsSafComplete = false; }
             const recordData = { month, branch, nurse, serviceData: newServiceData, serviceSignatures: newServiceSigs, safetyData: newSafetyData, safetySignatures: newSafetySigs, isServiceComplete: newIsSrvComplete, isSafetyComplete: newIsSafComplete };
-            const updatedRecords = { ...nursingRecords }; if (!updatedRecords[month]) updatedRecords[month] = {}; if (!updatedRecords[month][branch]) updatedRecords[month][branch] = {}; updatedRecords[month][branch][nurse] = recordData; setNursingRecords(updatedRecords);
+            
+            const updatedRecords = { ...nursingRecords };
+            if (!updatedRecords[month]) updatedRecords[month] = {};
+            if (!updatedRecords[month][branch]) updatedRecords[month][branch] = {};
+            updatedRecords[month][branch][nurse] = recordData; setNursingRecords(updatedRecords);
+            
             if (db && user) { try { await db.doc(`artifacts/${appId}/public/data/assessments/${month}_${branch}_${nurse}`).set(recordData, { merge: true }); setTimeout(() => { setSysModal({ show: true, msg: '✅ 已成功重置表單！', type: 'alert' }); }, 100); } catch (e) {} }
           }
         });
@@ -926,9 +1142,13 @@
             const { month, brand, branch, staff } = counterInfo;
             const newRec = { month, brand, branch, staff, evaluations: {} };
             setCounterData(getEmptyCounterRecord());
+            
             const updated = { ...counterRecords };
-            if (!updated[month]) updated[month] = {}; if (!updated[month][brand]) updated[month][brand] = {}; if (!updated[month][brand][branch]) updated[month][brand][branch] = {};
+            if (!updated[month]) updated[month] = {};
+            if (!updated[month][brand]) updated[month][brand] = {};
+            if (!updated[month][brand][branch]) updated[month][brand][branch] = {};
             updated[month][brand][branch][staff] = newRec; setCounterRecords(updated);
+            
             if (db && user) { try { await db.doc(`artifacts/${appId}/public/data/counter_assessments/${month}_${brand}_${branch}_${staff}`).set(newRec, { merge: true }); setTimeout(() => { setSysModal({ show: true, msg: '✅ 已成功重置表單！', type: 'alert' }); }, 100); } catch (e) {} }
           }
         });
@@ -941,7 +1161,7 @@
           if (safetyData[item.id]) answeredCount++; else { const shortTitle = sec.title.split('.')[1] || sec.title; missingItemsList.push(`📍 【${shortTitle}】> ${cat.title}\n   ❌ ${item.text}`); }
         })));
         if (answeredCount < 96) {
-          const displayMissing = missingItemsList.slice(0, 3).join('\n\n'); const extraMsg = missingItemsList.length > 3 ? `\n\n...以及其他 ${missingItemsList.length - 3} 項未評核` : '';
+          const displayMissing = missingItemsList.slice(0, 3).join('\n\n'); const extraMsg = missingItemsList.length > 3 ? `\n\n...以及 ${missingItemsList.length - 3} 項未評核` : '';
           setSysModal({ show: true, alignLeft: true, msg: `【防呆提醒】您還有 ${96 - answeredCount} 題未評核！\n\n🔍 漏評項目提示：\n${displayMissing}${extraMsg}\n\n確定要強制「暫存」並返回首頁嗎？\n(若要繼續評分請按取消)`, type: 'confirm', onConfirm: () => { saveNursingToRecords(false); setCurrentView('home'); } });
         } else { saveNursingToRecords(true); setCurrentView('home'); }
       };
@@ -959,132 +1179,47 @@
       const handleNewNameChange = (key, val) => setNewRosterNames(prev => ({...prev, [key]: val}));
 
       // ==========================
-      //  RENDER 0: PORTAL
+      //  RENDER 區塊
       // ==========================
       const renderPortal = () => (
         <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-72 bg-gradient-to-b from-slate-700 to-slate-500 transform -skew-y-6 origin-top-left z-0 shadow-lg"></div>
           <div className="relative z-10 max-w-4xl w-full">
-            <div className="text-center mb-12">
-              <h1 className="text-4xl md:text-5xl font-bold text-white tracking-widest mb-4 drop-shadow-md">全方位評核系統</h1>
-              <p className="text-slate-100 text-lg md:text-xl font-medium">請選擇您所屬的部門系統進入</p>
-            </div>
+            <div className="text-center mb-12"><h1 className="text-4xl md:text-5xl font-bold text-white tracking-widest mb-4 drop-shadow-md">全方位評核系統</h1><p className="text-slate-100 text-lg md:text-xl font-medium">請選擇您所屬的部門系統進入</p></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div 
-                onClick={() => enterSystem('nursing')}
-                className="bg-slate-50 rounded-3xl shadow-xl shadow-slate-300/50 hover:shadow-2xl transition-all cursor-pointer p-8 text-center border-t-8 border-sky-600 hover:-translate-y-2 group"
-              >
-                <div className="w-24 h-24 mx-auto bg-sky-100/50 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-12 h-12 text-sky-700">
-                    <rect x="2" y="6" width="20" height="14" rx="2" ry="2"></rect>
-                    <path d="M8 6V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v2"></path>
-                    <path d="M12 10v6"></path>
-                    <path d="M9 13h6"></path>
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-sky-800 mb-3">護理部評核</h2>
-                <p className="text-slate-500 font-medium">美加專用</p>
-                <div className="mt-6 inline-block bg-sky-100 text-sky-800 px-6 py-2 rounded-full text-sm font-bold group-hover:bg-sky-700 group-hover:text-white transition-colors">
-                  進入系統 ➔
-                </div>
-              </div>
-              <div 
-                onClick={() => enterSystem('counter')}
-                className="bg-slate-50 rounded-3xl shadow-xl shadow-slate-300/50 hover:shadow-2xl transition-all cursor-pointer p-8 text-center border-t-8 border-teal-600 hover:-translate-y-2 group"
-              >
-                <div className="w-24 h-24 mx-auto bg-teal-100/50 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-12 h-12 text-teal-700">
-                    <path d="M10 2h4"></path>
-                    <path d="M12 14v-4"></path>
-                    <path d="M8 22h8"></path>
-                    <path d="M15.8 7A4 4 0 0 0 8.2 7c-2 0-4 1.5-4 4.5 0 1.5 1 3 2.5 3.5h10.6c1.5-.5 2.5-2 2.5-3.5 0-3-2-4.5-4-4.5z"></path>
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-teal-800 mb-3">櫃台客服評核</h2>
-                <p className="text-slate-500 font-medium">美加 / 康博 雙品牌</p>
-                <div className="mt-6 inline-block bg-teal-100 text-teal-800 px-6 py-2 rounded-full text-sm font-bold group-hover:bg-teal-700 group-hover:text-white transition-colors">
-                  進入系統 ➔
-                </div>
-              </div>
+              <div onClick={() => enterSystem('nursing')} className="bg-slate-50 rounded-3xl shadow-xl shadow-slate-300/50 hover:shadow-2xl transition-all cursor-pointer p-8 text-center border-t-8 border-sky-600 hover:-translate-y-2 group"><div className="w-24 h-24 mx-auto bg-sky-100/50 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-12 h-12 text-sky-700"><rect x="2" y="6" width="20" height="14" rx="2" ry="2"></rect><path d="M8 6V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v2"></path><path d="M12 10v6"></path><path d="M9 13h6"></path></svg></div><h2 className="text-2xl font-bold text-sky-800 mb-3">護理部評核</h2><p className="text-slate-500 font-medium">美加專用</p><div className="mt-6 inline-block bg-sky-100 text-sky-800 px-6 py-2 rounded-full text-sm font-bold group-hover:bg-sky-700 group-hover:text-white transition-colors">進入系統 ➔</div></div>
+              <div onClick={() => enterSystem('counter')} className="bg-slate-50 rounded-3xl shadow-xl shadow-slate-300/50 hover:shadow-2xl transition-all cursor-pointer p-8 text-center border-t-8 border-teal-600 hover:-translate-y-2 group"><div className="w-24 h-24 mx-auto bg-teal-100/50 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-12 h-12 text-teal-700"><path d="M10 2h4"></path><path d="M12 14v-4"></path><path d="M8 22h8"></path><path d="M15.8 7A4 4 0 0 0 8.2 7c-2 0-4 1.5-4 4.5 0 1.5 1 3 2.5 3.5h10.6c1.5-.5 2.5-2 2.5-3.5 0-3-2-4.5-4-4.5z"></path></svg></div><h2 className="text-2xl font-bold text-teal-800 mb-3">櫃台客服評核</h2><p className="text-slate-500 font-medium">美加 / 康博 雙品牌</p><div className="mt-6 inline-block bg-teal-100 text-teal-800 px-6 py-2 rounded-full text-sm font-bold group-hover:bg-teal-700 group-hover:text-white transition-colors">進入系統 ➔</div></div>
             </div>
-            <div className="text-center mt-12 text-sm text-slate-600 bg-slate-200/50 backdrop-blur-sm p-4 rounded-xl inline-block mx-auto border border-slate-300 shadow-sm">
-              💡 <b>管理員分享提示：</b> 點擊進入系統後，可直接點擊「複製分享連結」，傳送給相關同仁進行評分。<br/>他們將無法切換回此畫面，確保部門間獨立作業！
-            </div>
-            
-            {isSuperAdmin && (
-               <div className="mt-12 max-w-md mx-auto text-center animate-fade-in relative z-20">
-                  <button onClick={() => setCurrentView('settings')} className="w-full py-4 rounded-xl font-bold text-lg bg-slate-800 text-white shadow-xl hover:bg-slate-900 transition flex justify-center items-center gap-2 border border-slate-700">
-                    ⚙️ 進入總管理後台 (名單與權限設定)
-                  </button>
-               </div>
-            )}
+            <div className="text-center mt-12 text-sm text-slate-600 bg-slate-200/50 backdrop-blur-sm p-4 rounded-xl inline-block mx-auto border border-slate-300 shadow-sm">💡 <b>管理員分享提示：</b> 點擊進入系統後，可直接點擊「複製分享連結」，傳送給相關同仁進行評分。<br/>他們將無法切換回此畫面，確保部門間獨立作業！</div>
+            {isSuperAdmin && (<div className="mt-12 max-w-md mx-auto text-center animate-fade-in relative z-20"><button onClick={() => setCurrentView('settings')} className="w-full py-4 rounded-xl font-bold text-lg bg-slate-800 text-white shadow-xl hover:bg-slate-900 transition flex justify-center items-center gap-2 border border-slate-700">⚙️ 進入總管理後台 (名單與權限設定)</button></div>)}
           </div>
         </div>
       );
 
-      // ==========================
-      //  RENDER 1: APP HOME (NURSING OR COUNTER)
-      // ==========================
       const renderHome = () => {
         const isNursing = sysModule === 'nursing';
         return (
         <div className={`p-6 max-w-lg mx-auto min-h-screen animate-fade-in shadow-xl shadow-slate-200/50 md:my-6 md:rounded-3xl md:min-h-[90vh] flex flex-col justify-between relative overflow-hidden ${isNursing ? 'bg-gradient-to-br from-slate-100 via-sky-50/50 to-slate-200' : 'bg-gradient-to-br from-slate-100 via-teal-50/50 to-slate-200'}`}>
-          
-          {/* 舒適的背景裝飾點綴 (莫蘭迪色系) */}
           <div className={`absolute top-0 right-0 -mt-16 -mr-16 w-64 h-64 rounded-full blur-3xl pointer-events-none ${isNursing ? 'bg-sky-300/30' : 'bg-teal-300/30'}`}></div>
           <div className={`absolute bottom-20 left-0 -ml-16 w-56 h-56 rounded-full blur-3xl pointer-events-none ${isNursing ? 'bg-indigo-300/20' : 'bg-emerald-300/20'}`}></div>
 
           <div className="relative z-10 flex-1">
             <div className="text-center mb-8 relative pt-4">
-              <h1 className={`text-3xl font-bold tracking-wider mb-2 ${isNursing ? 'text-sky-800' : 'text-teal-800'}`}>
-                {isNursing ? '護理部評核系統 (美加)' : '櫃台客服評核系統'}
-              </h1>
-              <p className="text-slate-500 mt-2 font-medium">請先設定評核基本資料</p>
-              
-              <button 
-                onClick={copyShareLink}
-                className="mt-4 inline-flex items-center gap-2 bg-slate-50/80 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-full text-sm font-bold shadow-sm transition-colors border border-slate-300 backdrop-blur-sm"
-              >
-                🔗 複製專屬分享連結
-              </button>
+              <h1 className={`text-3xl font-bold tracking-wider mb-2 ${isNursing ? 'text-sky-800' : 'text-teal-800'}`}>{isNursing ? '護理部評核系統 (美加)' : '櫃台客服評核系統'}</h1><p className="text-slate-500 mt-2 font-medium">請先設定評核基本資料</p>
+              <button onClick={copyShareLink} className="mt-4 inline-flex items-center gap-2 bg-slate-50/80 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-full text-sm font-bold shadow-sm transition-colors border border-slate-300 backdrop-blur-sm">🔗 複製專屬分享連結</button>
             </div>
 
             {isNursing && (
               <div className="space-y-6 animate-fade-in">
                 <div className="space-y-5 bg-slate-50/60 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-sky-100">
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-2">選擇評分月份</label>
-                    <select className="w-full p-3 rounded-xl border border-slate-300 bg-white/80 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition-shadow text-slate-700" value={baseInfo.month} onChange={(e) => handleBaseInfoChange('month', e.target.value)}><option value="">-- 請選擇月份 --</option>{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select>
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-2">選擇分院 (美加)</label>
-                    <select className="w-full p-3 rounded-xl border border-slate-300 bg-white/80 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition-shadow text-slate-700" value={baseInfo.branch} onChange={(e) => handleBaseInfoChange('branch', e.target.value)}>
-                      <option value="">-- 請選擇分院 --</option>
-                      {NURSING_BRANCHES.map(b => {
-                        if (!rosters.nursing[b]) return null;
-                        const allDone = baseInfo.month && rosters.nursing[b].filter(n=>n.active).length > 0 && rosters.nursing[b].filter(n=>n.active).every(n => nursingRecords[baseInfo.month]?.[b]?.[n.name]?.isServiceComplete && nursingRecords[baseInfo.month]?.[b]?.[n.name]?.isSafetyComplete);
-                        return <option key={b} value={b}>{b} {allDone ? '✅ (全員完核)' : ''}</option>;
-                      })}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-2">選擇受評者 (護理師)</label>
-                    <select disabled={!baseInfo.branch} className={`w-full p-3 rounded-xl border outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition-shadow text-slate-700 ${!baseInfo.branch ? 'bg-slate-100/50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white/80 border-slate-300'}`} value={baseInfo.nurse} onChange={(e) => handleBaseInfoChange('nurse', e.target.value)}>
-                      <option value="">{baseInfo.branch ? '-- 請選擇受評者 --' : '-- 請先選擇分院 --'}</option>
-                      {baseInfo.branch && rosters.nursing[baseInfo.branch]?.filter(n=>n.active).map(n => {
-                        const isDone = nursingRecords[baseInfo.month]?.[baseInfo.branch]?.[n.name]?.isServiceComplete && nursingRecords[baseInfo.month]?.[baseInfo.branch]?.[n.name]?.isSafetyComplete;
-                        return <option key={n.name} value={n.name}>{n.name} {isDone ? '✅ (已完成)' : ''}</option>;
-                      })}
-                    </select>
-                  </div>
+                  <div><label className="block text-slate-700 font-bold mb-2">選擇評分月份</label><select className="w-full p-3 rounded-xl border border-slate-300 bg-white/80 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition-shadow text-slate-700" value={baseInfo.month} onChange={(e) => handleBaseInfoChange('month', e.target.value)}><option value="">-- 請選擇月份 --</option>{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+                  <div><label className="block text-slate-700 font-bold mb-2">選擇分院 (美加)</label><select className="w-full p-3 rounded-xl border border-slate-300 bg-white/80 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition-shadow text-slate-700" value={baseInfo.branch} onChange={(e) => handleBaseInfoChange('branch', e.target.value)}><option value="">-- 請選擇分院 --</option>{NURSING_BRANCHES.map(b => { if (!rosters.nursing[b]) return null; const allDone = baseInfo.month && rosters.nursing[b].filter(n=>n.active).length > 0 && rosters.nursing[b].filter(n=>n.active).every(n => nursingRecords[baseInfo.month]?.[b]?.[n.name]?.isServiceComplete && nursingRecords[baseInfo.month]?.[b]?.[n.name]?.isSafetyComplete); return <option key={b} value={b}>{b} {allDone ? '✅ (全員完核)' : ''}</option>; })}</select></div>
+                  <div><label className="block text-slate-700 font-bold mb-2">選擇受評者 (護理師)</label><select disabled={!baseInfo.branch} className={`w-full p-3 rounded-xl border outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition-shadow text-slate-700 ${!baseInfo.branch ? 'bg-slate-100/50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white/80 border-slate-300'}`} value={baseInfo.nurse} onChange={(e) => handleBaseInfoChange('nurse', e.target.value)}><option value="">{baseInfo.branch ? '-- 請選擇受評者 --' : '-- 請先選擇分院 --'}</option>{baseInfo.branch && rosters.nursing[baseInfo.branch]?.filter(n=>n.active).map(n => { const isDone = nursingRecords[baseInfo.month]?.[baseInfo.branch]?.[n.name]?.isServiceComplete && nursingRecords[baseInfo.month]?.[baseInfo.branch]?.[n.name]?.isSafetyComplete; return <option key={n.name} value={n.name}>{n.name} {isDone ? '✅ (已完成)' : ''}</option>; })}</select></div>
                 </div>
                 <div className="space-y-4 pt-2">
                   <button disabled={!canStartAssessment} onClick={() => navigateTo('service')} className={`w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all ${canStartAssessment ? 'bg-sky-700 hover:bg-sky-800 text-white hover:shadow-lg hover:-translate-y-0.5' : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-70'}`}>進入「服務品質評核」</button>
                   <button disabled={!canStartAssessment} onClick={() => navigateTo('safety')} className={`w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all ${canStartAssessment ? 'bg-teal-700 hover:bg-teal-800 text-white hover:shadow-lg hover:-translate-y-0.5' : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-70'}`}>進入「醫療安全評核」</button>
-                  <div className="grid grid-cols-2 gap-3 mt-4">
-                    <button onClick={() => navigateTo('report')} className="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-50 text-sky-800 border border-sky-200 hover:bg-sky-100 shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm">📄 單人報表</button>
-                    <button onClick={() => navigateTo('dashboard')} className="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm">📊 全院儀表板</button>
-                  </div>
+                  <div className="grid grid-cols-2 gap-3 mt-4"><button onClick={() => navigateTo('report')} className="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-50 text-sky-800 border border-sky-200 hover:bg-sky-100 shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm">📄 單人報表</button><button onClick={() => navigateTo('dashboard')} className="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm">📊 全院儀表板</button></div>
                 </div>
               </div>
             )}
@@ -1092,94 +1227,25 @@
             {!isNursing && (
               <div className="space-y-6 animate-fade-in">
                 <div className="space-y-5 bg-slate-50/60 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-teal-100">
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-2">選擇評分月份</label>
-                    <select className="w-full p-3 rounded-xl border border-slate-300 bg-white/80 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700" value={counterInfo.month} onChange={(e) => handleCounterInfoChange('month', e.target.value)}><option value="">-- 請選擇月份 --</option>{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select>
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-2">選擇品牌</label>
-                    <select className="w-full p-3 rounded-xl border border-slate-300 bg-white/80 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700" value={counterInfo.brand} onChange={(e) => handleCounterInfoChange('brand', e.target.value)}>
-                      <option value="">-- 請選擇品牌 --</option>
-                      {COUNTER_BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-2">選擇分院</label>
-                    <select disabled={!counterInfo.brand} className={`w-full p-3 rounded-xl border outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700 ${!counterInfo.brand ? 'bg-slate-100/50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white/80 border-slate-300'}`} value={counterInfo.branch} onChange={(e) => handleCounterInfoChange('branch', e.target.value)}>
-                      <option value="">{counterInfo.brand ? '-- 請選擇分院 --' : '-- 請先選擇品牌 --'}</option>
-                      {counterInfo.brand && COUNTER_BRANCHES[counterInfo.brand].map(b => {
-                        if (!rosters.counter[counterInfo.brand][b]) return null;
-                        const expectedCount = rosters.counter[counterInfo.brand][b].evaluators.filter(e=>e.active).length;
-                        const evaluatees = rosters.counter[counterInfo.brand][b].evaluatees.filter(e=>e.active);
-                        const allDone = counterInfo.month && evaluatees.length > 0 && evaluatees.every(n => {
-                           const summary = getCounterStaffSummary(counterRecords[counterInfo.month]?.[counterInfo.brand]?.[b]?.[n.name], expectedCount);
-                           return summary.isComplete;
-                        });
-                        return <option key={b} value={b}>{b} {allDone ? '✅ (全員完核)' : ''}</option>;
-                      })}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-2">選擇您的身分 (評核人)</label>
-                    <select disabled={!counterInfo.branch} className={`w-full p-3 rounded-xl border outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700 ${!counterInfo.branch ? 'bg-slate-100/50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white/80 border-slate-300'}`} value={counterInfo.evaluatorName} onChange={(e) => handleCounterInfoChange('evaluatorName', e.target.value)}>
-                      <option value="">{counterInfo.branch ? '-- 請選擇您的姓名 --' : '-- 請先選擇分院 --'}</option>
-                      {counterInfo.brand && counterInfo.branch && rosters.counter[counterInfo.brand][counterInfo.branch].evaluators.filter(e=>e.active).map(ev => {
-                        const evaluatees = rosters.counter[counterInfo.brand][counterInfo.branch].evaluatees.filter(e=>e.active);
-                        const hasEvaluatedAll = evaluatees.length > 0 && evaluatees.every(emp => {
-                          const rec = counterRecords[counterInfo.month]?.[counterInfo.brand]?.[counterInfo.branch]?.[emp.name];
-                          return rec?.evaluations?.[ev.name]?.isComplete;
-                        });
-                        return <option key={ev.name} value={ev.name}>{ev.title} - {ev.name} {hasEvaluatedAll ? '✅ (已完成)' : ''}</option>;
-                      })}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-2">選擇受評者 (行政/客服櫃台)</label>
-                    <select disabled={!counterInfo.evaluatorName} className={`w-full p-3 rounded-xl border outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700 ${!counterInfo.evaluatorName ? 'bg-slate-100/50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white/80 border-slate-300'}`} value={counterInfo.staff} onChange={(e) => handleCounterInfoChange('staff', e.target.value)}>
-                      <option value="">{counterInfo.evaluatorName ? '-- 請選擇受評者 --' : '-- 請先選擇評核人 --'}</option>
-                      {counterInfo.brand && counterInfo.branch && rosters.counter[counterInfo.brand][counterInfo.branch].evaluatees.filter(e=>e.active).map(n => {
-                        const rec = counterRecords[counterInfo.month]?.[counterInfo.brand]?.[counterInfo.branch]?.[n.name];
-                        const expectedCount = rosters.counter[counterInfo.brand][counterInfo.branch].evaluators.filter(e=>e.active).length;
-                        const summary = getCounterStaffSummary(rec, expectedCount);
-                        const isEvalByMe = rec?.evaluations?.[counterInfo.evaluatorName]?.isComplete;
-                        
-                        let statusStr = '';
-                        if (summary.isComplete) statusStr = '🌟 (全員已評)';
-                        else if (isEvalByMe) statusStr = '✅ (您已評)';
-                        return <option key={n.name} value={n.name}>{n.name} {statusStr}</option>;
-                      })}
-                    </select>
-                  </div>
+                  <div><label className="block text-slate-700 font-bold mb-2">選擇評分月份</label><select className="w-full p-3 rounded-xl border border-slate-300 bg-white/80 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700" value={counterInfo.month} onChange={(e) => handleCounterInfoChange('month', e.target.value)}><option value="">-- 請選擇月份 --</option>{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+                  <div><label className="block text-slate-700 font-bold mb-2">選擇品牌</label><select className="w-full p-3 rounded-xl border border-slate-300 bg-white/80 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700" value={counterInfo.brand} onChange={(e) => handleCounterInfoChange('brand', e.target.value)}><option value="">-- 請選擇品牌 --</option>{COUNTER_BRANDS.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
+                  <div><label className="block text-slate-700 font-bold mb-2">選擇分院</label><select disabled={!counterInfo.brand} className={`w-full p-3 rounded-xl border outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700 ${!counterInfo.brand ? 'bg-slate-100/50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white/80 border-slate-300'}`} value={counterInfo.branch} onChange={(e) => handleCounterInfoChange('branch', e.target.value)}><option value="">{counterInfo.brand ? '-- 請選擇分院 --' : '-- 請先選擇品牌 --'}</option>{counterInfo.brand && COUNTER_BRANCHES[counterInfo.brand].map(b => { if (!rosters.counter[counterInfo.brand][b]) return null; const expectedCount = rosters.counter[counterInfo.brand][b].evaluators.filter(e=>e.active).length; const evaluatees = rosters.counter[counterInfo.brand][b].evaluatees.filter(e=>e.active); const allDone = counterInfo.month && evaluatees.length > 0 && evaluatees.every(n => { const summary = getCounterStaffSummary(counterRecords[counterInfo.month]?.[counterInfo.brand]?.[b]?.[n.name], expectedCount); return summary.isComplete; }); return <option key={b} value={b}>{b} {allDone ? '✅ (全員完核)' : ''}</option>; })}</select></div>
+                  <div><label className="block text-slate-700 font-bold mb-2">選擇您的身分 (評核人)</label><select disabled={!counterInfo.branch} className={`w-full p-3 rounded-xl border outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700 ${!counterInfo.branch ? 'bg-slate-100/50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white/80 border-slate-300'}`} value={counterInfo.evaluatorName} onChange={(e) => handleCounterInfoChange('evaluatorName', e.target.value)}><option value="">{counterInfo.branch ? '-- 請選擇您的姓名 --' : '-- 請先選擇分院 --'}</option>{counterInfo.brand && counterInfo.branch && rosters.counter[counterInfo.brand][counterInfo.branch].evaluators.filter(e=>e.active).map(ev => { const evaluatees = rosters.counter[counterInfo.brand][counterInfo.branch].evaluatees.filter(e=>e.active); const hasEvaluatedAll = evaluatees.length > 0 && evaluatees.every(emp => { const rec = counterRecords[counterInfo.month]?.[counterInfo.brand]?.[counterInfo.branch]?.[emp.name]; return rec?.evaluations?.[ev.name]?.isComplete; }); return <option key={ev.name} value={ev.name}>{ev.title} - {ev.name} {hasEvaluatedAll ? '✅ (已完成)' : ''}</option>; })}</select></div>
+                  <div><label className="block text-slate-700 font-bold mb-2">選擇受評者 (行政/客服櫃台)</label><select disabled={!counterInfo.evaluatorName} className={`w-full p-3 rounded-xl border outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-shadow text-slate-700 ${!counterInfo.evaluatorName ? 'bg-slate-100/50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white/80 border-slate-300'}`} value={counterInfo.staff} onChange={(e) => handleCounterInfoChange('staff', e.target.value)}><option value="">{counterInfo.evaluatorName ? '-- 請選擇受評者 --' : '-- 請先選擇評核人 --'}</option>{counterInfo.brand && counterInfo.branch && rosters.counter[counterInfo.brand][counterInfo.branch].evaluatees.filter(e=>e.active).map(n => { const rec = counterRecords[counterInfo.month]?.[counterInfo.brand]?.[counterInfo.branch]?.[n.name]; const expectedCount = rosters.counter[counterInfo.brand][counterInfo.branch].evaluators.filter(e=>e.active).length; const summary = getCounterStaffSummary(rec, expectedCount); const isEvalByMe = rec?.evaluations?.[counterInfo.evaluatorName]?.isComplete; let statusStr = ''; if (summary.isComplete) statusStr = '🌟 (全員已評)'; else if (isEvalByMe) statusStr = '✅ (您已評)'; return <option key={n.name} value={n.name}>{n.name} {statusStr}</option>; })}</select></div>
                 </div>
                 
                 <div className="space-y-4 pt-2">
                   <button disabled={!counterInfo.staff || !counterInfo.month || !counterInfo.evaluatorName} onClick={() => navigateTo('counter_form')} className={`w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all ${counterInfo.staff && counterInfo.month && counterInfo.evaluatorName ? 'bg-teal-700 hover:bg-teal-800 text-white hover:shadow-lg hover:-translate-y-0.5' : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-70'}`}>進入「櫃台客服品質考核」</button>
                   
                   <div className="grid grid-cols-2 gap-3 mt-4">
-                    <button onClick={() => {
-                      if (isSuperAdmin || isCounterReportUnlocked) { navigateTo('report'); } else { setPendingRole('counter_report'); setShowPasswordModal(true); }
-                    }} className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm ${isCounterReportUnlocked ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100' : 'bg-slate-50 text-teal-800 border border-teal-200 hover:bg-teal-100'}`}>
-                      {isCounterReportUnlocked ? '🔓 單店報表 (已開放)' : '🔒 單店報表'}
-                    </button>
-                    <button onClick={() => {
-                      if (isSuperAdmin || isCounterReportUnlocked) { navigateTo('dashboard'); } else { setPendingRole('counter_report_dash'); setShowPasswordModal(true); }
-                    }} className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm ${isCounterReportUnlocked ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100' : 'bg-slate-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100'}`}>
-                      {isCounterReportUnlocked ? '🔓 橫式全院總表 (已開放)' : '🔒 橫式全院總表'}
-                    </button>
+                    <button onClick={() => { if (isSuperAdmin || isCounterReportUnlocked) { navigateTo('report'); } else { setPendingRole('counter_report'); setShowPasswordModal(true); } }} className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm ${isCounterReportUnlocked ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100' : 'bg-slate-50 text-teal-800 border border-teal-200 hover:bg-teal-100'}`}>{isCounterReportUnlocked ? '🔓 單店報表 (已開放)' : '🔒 單店報表'}</button>
+                    <button onClick={() => { if (isSuperAdmin || isCounterReportUnlocked) { navigateTo('dashboard'); } else { setPendingRole('counter_report_dash'); setShowPasswordModal(true); } }} className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1 backdrop-blur-sm ${isCounterReportUnlocked ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100' : 'bg-slate-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100'}`}>{isCounterReportUnlocked ? '🔓 橫式全院總表 (已開放)' : '🔒 橫式全院總表'}</button>
                   </div>
 
-                  {/* 總管專屬：強制設定報表開放狀態 */}
                   {isSuperAdmin && counterInfo.month && (
                     <div className="mt-4 p-4 bg-slate-100/80 rounded-xl border border-slate-200 flex flex-col gap-3 shadow-inner">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-bold text-slate-700">總管權限：本月報表開放狀態</span>
-                        <button onClick={handleToggleCounterUnlock} className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-colors ${isCounterManuallyUnlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-500 hover:bg-slate-600'}`}>
-                          {isCounterManuallyUnlocked ? '已手動開放 (點擊關閉)' : '目前鎖定 (點擊強制開放)'}
-                        </button>
-                      </div>
-                      {isCounterAutoUnlocked && !isCounterManuallyUnlocked && (
-                        <p className="text-xs text-emerald-700 font-bold bg-emerald-100/70 p-2 rounded-lg border border-emerald-200">✨ 系統偵測到本月所有櫃台評核已完成，目前為自動開放狀態！</p>
-                      )}
+                      <div className="flex justify-between items-center"><span className="text-sm font-bold text-slate-700">總管權限：本月報表開放狀態</span><button onClick={handleToggleCounterUnlock} className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-colors ${isCounterManuallyUnlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-500 hover:bg-slate-600'}`}>{isCounterManuallyUnlocked ? '已手動開放 (點擊關閉)' : '目前鎖定 (點擊強制開放)'}</button></div>
+                      {isCounterAutoUnlocked && !isCounterManuallyUnlocked && <p className="text-xs text-emerald-700 font-bold bg-emerald-100/70 p-2 rounded-lg border border-emerald-200">✨ 系統偵測到本月所有櫃台評核已完成，目前為自動開放狀態！</p>}
                     </div>
                   )}
                 </div>
@@ -1187,24 +1253,16 @@
             )}
           </div>
 
-          {/* 總管權限按鈕 (確保在部門首頁下方永遠顯示) */}
           {isSuperAdmin && (
             <div className="mt-8 pt-6 border-t border-slate-300/50 space-y-3 animate-fade-in no-print relative z-10">
-               <button onClick={() => setCurrentView('settings')} className="w-full py-4 rounded-xl font-bold text-lg bg-slate-800 text-white shadow-lg hover:bg-slate-900 transition flex justify-center items-center gap-2 border border-slate-700">
-                 ⚙️ 進入總管理後台 (名單設定)
-               </button>
-               <button onClick={() => enterSystem('portal')} className="w-full py-4 rounded-xl font-bold text-lg bg-sky-700 text-white shadow-md hover:bg-sky-800 transition flex justify-center items-center gap-2 border border-sky-600">
-                 🏠 返回主系統選擇大廳
-               </button>
+               <button onClick={() => setCurrentView('settings')} className="w-full py-4 rounded-xl font-bold text-lg bg-slate-800 text-white shadow-lg hover:bg-slate-900 transition flex justify-center items-center gap-2 border border-slate-700">⚙️ 進入總管理後台 (名單設定)</button>
+               <button onClick={() => enterSystem('portal')} className="w-full py-4 rounded-xl font-bold text-lg bg-sky-700 text-white shadow-md hover:bg-sky-800 transition flex justify-center items-center gap-2 border border-sky-600">🏠 返回主系統選擇大廳</button>
             </div>
           )}
         </div>
         );
       };
 
-      // ==========================
-      //  RENDER 2: COUNTER FORM
-      // ==========================
       const renderCounterForm = () => {
         const handleScore = (qId, val) => { if(!isReadOnlyMode) setCounterData(prev => ({...prev, scores: {...prev.scores, [qId]: val}})); };
         const qCount = Object.keys(counterData.scores || {}).length;
@@ -1221,13 +1279,9 @@
                 {isSuperAdmin && <button onClick={handleResetCounter} className="text-sm bg-red-500 text-white px-3 py-1 rounded-lg hover:bg-red-400 transition shadow-sm font-bold flex items-center gap-1">🔄 重置</button>}
               </div>
               <h2 className="font-bold text-lg leading-tight text-center">櫃台客服評核<br/><span className="text-xs font-normal text-teal-200">{brand} - {branch}</span></h2>
-              <div className="flex gap-2 no-print">
-                 <button onClick={() => exportPDF('counter-form-panel', `櫃台客服評核_${staff}`)} className="text-sm bg-indigo-600 px-3 py-1 rounded-lg hover:bg-indigo-500 transition shadow-sm font-bold flex items-center gap-1">📄 匯出 PDF</button>
-              </div>
+              <div className="flex gap-2 no-print"><button onClick={() => exportPDF('counter-form-panel', `櫃台客服評核_${staff}`)} className="text-sm bg-indigo-600 px-3 py-1 rounded-lg hover:bg-indigo-500 transition shadow-sm font-bold flex items-center gap-1">📄 匯出 PDF</button></div>
             </div>
-            
             {isReadOnlyMode && <div className="bg-purple-100 border-l-4 border-purple-500 p-3 mx-4 mt-4 rounded shadow-sm no-print"><p className="text-sm font-bold text-purple-800">目前為人資唯讀模式。</p></div>}
-
             <div className="p-4 print:p-0 print:pt-4 print-panel">
               <div className="bg-slate-50 rounded-xl shadow-sm p-5 mb-6 border border-slate-200 print:shadow-none print:border-b-2 print:border-teal-700 print:rounded-none">
                  <h3 className="font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">📋 評核人資訊</h3>
@@ -1237,48 +1291,28 @@
                    <div><label className="text-xs font-bold text-slate-500 block mb-1">評核日期</label><input disabled={isReadOnlyMode} type="date" value={counterData.evaluateDate || new Date().toISOString().split('T')[0]} onChange={e=>setCounterData({...counterData, evaluateDate: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg outline-none bg-white focus:border-teal-500"/></div>
                  </div>
               </div>
-
               <div className="bg-slate-50 rounded-xl shadow-sm p-4 mb-4 flex justify-between items-center border-l-4 border-teal-600 print:shadow-none border border-slate-200">
                 <div><p className="text-sm text-slate-500">受評夥伴</p><p className="font-bold text-xl text-teal-800">{staff}</p></div>
                 <div className="text-right"><p className="text-sm text-slate-500">單張平均得分</p><p className="font-bold text-3xl text-teal-700">{avgScore} <span className="text-sm text-slate-400">分</span></p></div>
               </div>
-
               <div className="space-y-6 print:space-y-4">
                 {COUNTER_QUESTIONS.map((q) => (
                   <div key={q.id} className="bg-slate-50 p-5 rounded-xl shadow-sm border border-slate-200 print:shadow-none print:border-slate-300 print:break-inside-avoid">
-                     <h3 className="font-bold text-slate-800 text-lg">{q.title}</h3>
-                     <p className="text-sm text-teal-800 font-medium mt-1 mb-4 bg-teal-100/50 p-2 rounded">{q.desc}</p>
-                     
+                     <h3 className="font-bold text-slate-800 text-lg">{q.title}</h3><p className="text-sm text-teal-800 font-medium mt-1 mb-4 bg-teal-100/50 p-2 rounded">{q.desc}</p>
                      {q.type === 'score' ? (
                        <div className="space-y-2 mt-2">
                          {[5, 4, 3, 2, 1].map(val => {
                            const isSelected = counterData.scores && counterData.scores[q.id] === val;
                            return (
-                             <button 
-                               key={val} 
-                               disabled={isReadOnlyMode} 
-                               onClick={() => handleScore(q.id, val)} 
-                               className={`w-full text-left flex items-start gap-3 p-3 rounded-lg border-2 transition-colors ${isSelected ? 'bg-teal-50 border-teal-500 text-teal-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'} ${isReadOnlyMode ? 'opacity-80 cursor-not-allowed' : ''}`}
-                             >
-                               <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm border-2 ${isSelected ? 'bg-teal-500 text-white border-teal-500' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
-                                 {val}
-                               </div>
-                               <div className="flex-1 pt-1 text-sm leading-relaxed">
-                                 {q.scores[val]}
-                               </div>
+                             <button key={val} disabled={isReadOnlyMode} onClick={() => handleScore(q.id, val)} className={`w-full text-left flex items-start gap-3 p-3 rounded-lg border-2 transition-colors ${isSelected ? 'bg-teal-50 border-teal-500 text-teal-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'} ${isReadOnlyMode ? 'opacity-80 cursor-not-allowed' : ''}`}>
+                               <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm border-2 ${isSelected ? 'bg-teal-500 text-white border-teal-500' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>{val}</div>
+                               <div className="flex-1 pt-1 text-sm leading-relaxed">{q.scores[val]}</div>
                              </button>
                            );
                          })}
                        </div>
                      ) : (
-                       <textarea
-                          disabled={isReadOnlyMode}
-                          rows="4"
-                          placeholder="請在此輸入給予該名夥伴的回饋與建議..."
-                          value={counterData.feedback || ''}
-                          onChange={e => setCounterData({...counterData, feedback: e.target.value})}
-                          className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-teal-500 resize-none print:border-none bg-white text-slate-700"
-                       />
+                       <textarea disabled={isReadOnlyMode} rows="4" placeholder="請在此輸入給予該名夥伴的回饋與建議..." value={counterData.feedback || ''} onChange={e => setCounterData({...counterData, feedback: e.target.value})} className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-teal-500 resize-none print:border-none bg-white text-slate-700" />
                      )}
                   </div>
                 ))}
@@ -1286,17 +1320,12 @@
             </div>
             <div className="fixed bottom-0 w-full max-w-3xl bg-slate-50 border-t border-slate-200 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex gap-3 no-print z-30">
                {!isReadOnlyMode && <button onClick={() => saveCounterToRecords(true)} className="w-1/3 bg-teal-50 text-teal-800 font-bold py-3 rounded-xl border border-teal-200 hover:bg-teal-100 transition-colors">暫存進度</button>}
-               <button onClick={handleCounterSaveAndReturn} className={`${isReadOnlyMode ? 'w-full bg-slate-600 hover:bg-slate-700' : 'w-2/3 bg-teal-700 hover:bg-teal-800'} text-white font-bold py-3 rounded-xl shadow-lg transition-colors`}>
-                 {isReadOnlyMode ? '返回首頁' : '確認儲存並送出'}
-               </button>
+               <button onClick={handleCounterSaveAndReturn} className={`${isReadOnlyMode ? 'w-full bg-slate-600 hover:bg-slate-700' : 'w-2/3 bg-teal-700 hover:bg-teal-800'} text-white font-bold py-3 rounded-xl shadow-lg transition-colors`}>{isReadOnlyMode ? '返回首頁' : '確認儲存並送出'}</button>
             </div>
           </div>
         );
       };
 
-      // ==========================
-      //  RENDER 3: 服務品質評核
-      // ==========================
       const renderServiceQuality = () => {
         const calculateScore = (roleData) => Object.values(roleData).reduce((sum, val) => sum + (val || 0), 0);
         return (
@@ -1308,9 +1337,7 @@
                  {isSuperAdmin && <button onClick={() => handleResetNursing('service')} className="text-sm bg-red-600 px-3 py-1 rounded-lg hover:bg-red-500 transition shadow-sm font-bold flex items-center gap-1">🔄 重置</button>}
               </div>
               <h2 className="font-bold text-lg">服務品質評核</h2>
-              <div className="flex gap-2 no-print">
-                 <button onClick={() => exportPDF('service-quality-panel', `服務品質評核_${baseInfo.nurse}`)} className="text-sm bg-indigo-600 px-3 py-1 rounded-lg hover:bg-indigo-500 transition shadow-sm font-bold flex items-center gap-1">📄 匯出 PDF</button>
-              </div>
+              <div className="flex gap-2 no-print"><button onClick={() => exportPDF('service-quality-panel', `服務品質評核_${baseInfo.nurse}`)} className="text-sm bg-indigo-600 px-3 py-1 rounded-lg hover:bg-indigo-500 transition shadow-sm font-bold flex items-center gap-1">📄 匯出 PDF</button></div>
             </div>
             {isReadOnlyMode && <div className="bg-purple-100 border-l-4 border-purple-500 p-3 mx-4 mt-4 rounded shadow-sm no-print"><p className="text-sm font-bold text-purple-800">目前為人資檢視模式。</p></div>}
             <div className="p-4 print:p-0 print:pt-4">
@@ -1382,9 +1409,6 @@
         );
       };
 
-      // ==========================
-      //  RENDER 4: 醫療安全評核
-      // ==========================
       const renderMedicalSafety = () => {
         const isSafetyDisabled = (safetyMode === 'view' && !isSuperAdmin) || isReadOnlyMode;
         const handleSafetyScore = (qId, status) => { if (isSafetyDisabled) return; setSafetyData(prev => ({ ...prev, [qId]: status })); };
@@ -1494,15 +1518,10 @@
         );
       };
 
-      // ==========================
-      //  RENDER 5: 全院儀表板 (橫式總表)
-      // ==========================
       const renderDashboard = () => (
         <div className="max-w-7xl mx-auto bg-slate-100 min-h-screen p-6">
           <div className="flex justify-between items-center mb-6">
-            <button onClick={() => navigateTo('home')} className="flex items-center text-slate-500 hover:text-slate-800 font-bold transition-colors">
-              <svg className="w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg> 返回首頁
-            </button>
+            <button onClick={() => navigateTo('home')} className="flex items-center text-slate-500 hover:text-slate-800 font-bold transition-colors"><svg className="w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg> 返回首頁</button>
             <div className="flex gap-2">
               <button onClick={() => captureScreenshot('dashboard-panel', `全院儀表板_${dashMonth}`)} className="bg-orange-500 text-white font-bold px-4 py-2 rounded-lg text-sm hover:bg-orange-600 transition-colors shadow-sm flex items-center gap-1">📸 儲存圖片</button>
               <button onClick={exportDashboardToExcel} className="bg-emerald-600 text-white font-bold px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-1">📊 匯出 Excel</button>
@@ -1511,29 +1530,13 @@
           <div id="dashboard-panel" className="bg-slate-50 rounded-2xl shadow-md border border-slate-200 pb-4 print-panel overflow-hidden">
             <div className="bg-gradient-to-r from-slate-700 to-slate-600 p-6 text-white text-center">
                <h2 className="text-2xl font-bold tracking-widest mb-3">全院評核進度儀表板 ({sysModule === 'nursing' ? '護理部' : '櫃台部'})</h2>
-               <div className="inline-flex items-center bg-white/20 px-4 py-2 rounded-full no-print shadow-inner">
-                 <label className="mr-2 font-bold text-sm">切換月份:</label>
-                 <select value={dashMonth} onChange={(e) => setDashMonth(e.target.value)} className="text-slate-800 font-bold px-2 py-1 rounded outline-none cursor-pointer">
-                   {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
-                 </select>
-               </div>
+               <div className="inline-flex items-center bg-white/20 px-4 py-2 rounded-full no-print shadow-inner"><label className="mr-2 font-bold text-sm">切換月份:</label><select value={dashMonth} onChange={(e) => setDashMonth(e.target.value)} className="text-slate-800 font-bold px-2 py-1 rounded outline-none cursor-pointer">{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
                <div className="hidden print:block font-bold mt-2">月份: {dashMonth}</div>
             </div>
             <div className="p-6 overflow-x-auto">
               {sysModule === 'nursing' ? (
                 <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-600 text-sm">
-                      <th className="p-3 border-b border-slate-200 font-bold whitespace-nowrap">分院</th>
-                      <th className="p-3 border-b border-slate-200 font-bold whitespace-nowrap">護理師</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold whitespace-nowrap">服務評核</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold whitespace-nowrap">安全評核</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold whitespace-nowrap">狀態</th>
-                      <th className="p-3 border-b border-slate-200 text-right text-sky-700 font-bold whitespace-nowrap">服務獎金</th>
-                      <th className="p-3 border-b border-slate-200 text-right text-emerald-700 font-bold whitespace-nowrap">安全獎金</th>
-                      <th className="p-3 border-b border-slate-200 text-right text-orange-600 font-bold whitespace-nowrap">總獎金</th>
-                    </tr>
-                  </thead>
+                  <thead><tr className="bg-slate-100 text-slate-600 text-sm"><th className="p-3 border-b border-slate-200 font-bold whitespace-nowrap">分院</th><th className="p-3 border-b border-slate-200 font-bold whitespace-nowrap">護理師</th><th className="p-3 border-b border-slate-200 text-center font-bold whitespace-nowrap">服務評核</th><th className="p-3 border-b border-slate-200 text-center font-bold whitespace-nowrap">安全評核</th><th className="p-3 border-b border-slate-200 text-center font-bold whitespace-nowrap">狀態</th><th className="p-3 border-b border-slate-200 text-right text-sky-700 font-bold whitespace-nowrap">服務獎金</th><th className="p-3 border-b border-slate-200 text-right text-emerald-700 font-bold whitespace-nowrap">安全獎金</th><th className="p-3 border-b border-slate-200 text-right text-orange-600 font-bold whitespace-nowrap">總獎金</th></tr></thead>
                   <tbody>
                     {NURSING_BRANCHES.map((branch) => {
                       if (!rosters.nursing[branch]) return null;
@@ -1541,19 +1544,14 @@
                       if (activeNurses.length === 0) return null;
                       return activeNurses.map((nurse, nIdx) => {
                         const rec = nursingRecords[dashMonth]?.[branch]?.[nurse];
-                        const isSrvDone = !!rec?.isServiceComplete; const isSafDone = !!rec?.isSafetyComplete;
-                        const isCalculated = isSrvDone && isSafDone; 
-                        const bonusInfo = calculateNursingBonus(rec);
+                        const isSrvDone = !!rec?.isServiceComplete; const isSafDone = !!rec?.isSafetyComplete; const isCalculated = isSrvDone && isSafDone; const bonusInfo = calculateNursingBonus(rec);
                         return (
                           <tr key={`${branch}-${nurse}`} className="border-b border-slate-100 hover:bg-white transition-colors">
                             {nIdx === 0 && <td rowSpan={activeNurses.length} className="p-3 font-bold border-r border-slate-200 align-top text-slate-600">{branch}</td>}
                             <td className="p-3 text-slate-800 whitespace-nowrap font-medium">{nurse}</td>
-                            <td className="p-3 text-center text-lg">{isSrvDone ? '✅' : '❌'}</td>
-                            <td className="p-3 text-center text-lg">{isSafDone ? '✅' : '❌'}</td>
+                            <td className="p-3 text-center text-lg">{isSrvDone ? '✅' : '❌'}</td><td className="p-3 text-center text-lg">{isSafDone ? '✅' : '❌'}</td>
                             <td className="p-3 text-center">{isCalculated ? <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已完成</span> : <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">未完成</span>}</td>
-                            <td className="p-3 text-right font-bold text-sky-700">{isCalculated ? `$${bonusInfo.serviceBonus}` : '-'}</td>
-                            <td className="p-3 text-right font-bold text-emerald-700">{isCalculated ? `$${bonusInfo.safetyBonus}` : '-'}</td>
-                            <td className="p-3 text-right font-bold text-orange-600 text-lg">{isCalculated ? `$${bonusInfo.total}` : '-'}</td>
+                            <td className="p-3 text-right font-bold text-sky-700">{isCalculated ? `$${bonusInfo.serviceBonus}` : '-'}</td><td className="p-3 text-right font-bold text-emerald-700">{isCalculated ? `$${bonusInfo.safetyBonus}` : '-'}</td><td className="p-3 text-right font-bold text-orange-600 text-lg">{isCalculated ? `$${bonusInfo.total}` : '-'}</td>
                           </tr>
                         )
                       });
@@ -1564,97 +1562,15 @@
                 <table className="w-full text-left border-collapse whitespace-nowrap">
                   <thead>
                     <tr className="bg-slate-100 text-slate-600 text-sm">
-                      <th className="p-3 border-b border-slate-200 font-bold">品牌</th>
-                      <th className="p-3 border-b border-slate-200 font-bold">分院</th>
-                      <th className="p-3 border-b border-slate-200 font-bold">姓名</th>
-                      <th className="p-3 border-b border-slate-200 font-bold">職稱</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold">進度狀態</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人1</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分1</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人2</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分2</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人3</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分3</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人4</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分4</th>
-                      <th className="p-3 border-b border-slate-200 text-center font-bold text-sky-700">最終平均</th>
-                      <th className="p-3 border-b border-slate-200 text-right font-bold text-orange-600">達成獎金</th>
+                      <th className="p-3 border-b border-slate-200 font-bold">品牌</th><th className="p-3 border-b border-slate-200 font-bold">分院</th><th className="p-3 border-b border-slate-200 font-bold">姓名</th><th className="p-3 border-b border-slate-200 font-bold">職稱</th><th className="p-3 border-b border-slate-200 text-center font-bold">進度狀態</th>
+                      <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人1</th><th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分1</th>
+                      <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人2</th><th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分2</th>
+                      <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人3</th><th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分3</th>
+                      <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人4</th><th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分4</th>
+                      <th className="p-3 border-b border-slate-200 text-center font-bold text-sky-700">最終平均</th><th className="p-3 border-b border-slate-200 text-right font-bold text-orange-600">達成獎金</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {(() => {
-                      const rows = [];
-                      COUNTER_BRANDS.forEach(brand => {
-                        COUNTER_BRANCHES[brand].forEach(branch => {
-                          if (!rosters.counter[brand] || !rosters.counter[brand][branch]) return;
-                          let branchSum = 0; let branchCount = 0;
-                          const evaluators = rosters.counter[brand][branch].evaluators.filter(e=>e.active);
-                          const expectedCount = evaluators.length;
-                          const evaluatees = rosters.counter[brand][branch].evaluatees.filter(e=>e.active);
-                          const dirInfo = rosters.counter[brand][branch].director;
-                          const hasDir = dirInfo && dirInfo.active && dirInfo.name;
-                          const rowSpanCount = evaluatees.length + (hasDir ? 1 : 0);
-
-                          if (rowSpanCount === 0) return;
-
-                          evaluatees.forEach((staffObj, sIdx) => {
-                            const staff = staffObj.name;
-                            const rec = counterRecords[dashMonth]?.[brand]?.[branch]?.[staff];
-                            const summary = getCounterStaffSummary(rec, expectedCount);
-                            if (summary.isComplete) { branchSum += summary.avgScore; branchCount++; }
-                            
-                            const evals = Object.keys(rec?.evaluations || {}).filter(k => rec.evaluations[k].isComplete).map(k => {
-                              const sum = Object.values(rec.evaluations[k].scores).reduce((a,b)=>a+b,0);
-                              return { name: k, score: sum/5 };
-                            });
-                            
-                            const ev1 = evals[0] ? `${evals[0].name}` : '-'; const s1 = evals[0] ? evals[0].score : '-';
-                            const ev2 = evals[1] ? `${evals[1].name}` : '-'; const s2 = evals[1] ? evals[1].score : '-';
-                            const ev3 = evals[2] ? `${evals[2].name}` : '-'; const s3 = evals[2] ? evals[2].score : '-';
-                            const ev4 = evals[3] ? `${evals[3].name}` : '-'; const s4 = evals[3] ? evals[3].score : '-';
-
-                            rows.push(
-                              <tr key={`${brand}-${branch}-${staff}`} className="border-b border-slate-100 hover:bg-white transition-colors">
-                                {sIdx === 0 && <td rowSpan={rowSpanCount} className="p-3 font-bold text-slate-500 border-r border-slate-200 align-top bg-slate-50">{brand}</td>}
-                                {sIdx === 0 && <td rowSpan={rowSpanCount} className="p-3 text-slate-700 border-r border-slate-200 font-bold align-top bg-slate-50">{branch}</td>}
-                                <td className="p-3 text-slate-800 font-medium">{staff}</td>
-                                <td className="p-3 text-slate-500 text-sm">客服櫃台</td>
-                                <td className="p-3 text-center">
-                                  {summary.isComplete ? <span className="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已完成</span> : <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">{summary.evalCount > 0 ? `${summary.evalCount}/${expectedCount}人已評` : '未完成'}</span>}
-                                </td>
-                                <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev1}</td>
-                                <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s1}</td>
-                                <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev2}</td>
-                                <td className="p-3 text-center text-sm font-bold text-teal-700">{s2}</td>
-                                <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev3}</td>
-                                <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s3}</td>
-                                <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev4}</td>
-                                <td className="p-3 text-center text-sm font-bold text-teal-700">{s4}</td>
-                                <td className="p-3 text-center font-bold text-sky-700 text-lg border-l border-slate-200">{summary.evalCount > 0 ? summary.avgScore : '-'}</td>
-                                <td className="p-3 text-right font-bold text-orange-600 border-l border-slate-100">{summary.isComplete ? `$${summary.bonus}` : '-'}</td>
-                              </tr>
-                            );
-                          });
-
-                          if (hasDir) {
-                             const dirAvg = branchCount > 0 ? parseFloat((branchSum/branchCount).toFixed(1)) : 0;
-                             rows.push(
-                               <tr key={`${brand}-${branch}-dir`} className="border-b-2 border-slate-300 bg-indigo-50/40">
-                                 {evaluatees.length === 0 && <td rowSpan={1} className="p-3 text-slate-700 border-r border-slate-200 font-bold align-top bg-slate-50">{branch}</td>}
-                                 <td className="p-3 font-bold text-indigo-900">{dirInfo.name}</td>
-                                 <td className="p-3 font-bold text-indigo-700 text-sm">該店主任</td>
-                                 <td className="p-3 text-center">{branchCount > 0 ? <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已結算</span> : <span className="text-slate-400 text-xs font-bold">待結算</span>}</td>
-                                 <td colSpan="8" className="p-3 text-center text-slate-500 text-xs tracking-widest font-bold border-l border-slate-200">── 此為該店所有櫃台平均，不作單獨評分 ──</td>
-                                 <td className="p-3 text-center font-bold text-sky-800 text-lg border-l border-slate-200">{branchCount > 0 ? dirAvg : '-'}</td>
-                                 <td className="p-3 text-right font-bold text-orange-700 text-lg border-l border-slate-200">{branchCount > 0 ? '$' + calculateDirectorBonus(dirAvg) : '-'}</td>
-                               </tr>
-                             );
-                          }
-                        });
-                      });
-                      return rows;
-                    })()}
-                  </tbody>
+                  <tbody>{generateCounterTableRows(dashMonth, null, rosters, counterRecords, dashboardStatus)}</tbody>
                 </table>
               )}
             </div>
@@ -1662,9 +1578,6 @@
         </div>
       );
 
-      // ==========================
-      //  RENDER 6: REPORT (單店/單人 獎金報表)
-      // ==========================
       const renderReport = () => {
         if (sysModule === 'nursing') {
           const targetRecord = nursingRecords[nursingReportFilter.month]?.[nursingReportFilter.branch]?.[nursingReportFilter.nurse];
@@ -1727,7 +1640,6 @@
             </div>
           );
         } else {
-          // Counter Report (單店報表，套用橫式表格)
           return (
             <div className="max-w-6xl mx-auto bg-slate-100 min-h-screen p-6 pb-20">
                <div className="flex justify-between items-center mb-6">
@@ -1754,94 +1666,15 @@
                       <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead>
                           <tr className="bg-slate-100 text-slate-600 text-sm">
-                            <th className="p-3 border-b border-slate-200 font-bold">分院</th>
-                            <th className="p-3 border-b border-slate-200 font-bold">姓名</th>
-                            <th className="p-3 border-b border-slate-200 font-bold">職稱</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold">進度狀態</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人1</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分1</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人2</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分2</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人3</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分3</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人4</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分4</th>
-                            <th className="p-3 border-b border-slate-200 text-center font-bold text-sky-700">最終平均</th>
-                            <th className="p-3 border-b border-slate-200 text-right font-bold text-orange-600">達成獎金</th>
+                            <th className="p-3 border-b border-slate-200 font-bold">分院</th><th className="p-3 border-b border-slate-200 font-bold">姓名</th><th className="p-3 border-b border-slate-200 font-bold">職稱</th><th className="p-3 border-b border-slate-200 text-center font-bold">進度狀態</th>
+                            <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人1</th><th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分1</th>
+                            <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人2</th><th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分2</th>
+                            <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人3</th><th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分3</th>
+                            <th className="p-3 border-b border-slate-200 text-center font-bold text-slate-500">評核人4</th><th className="p-3 border-b border-slate-200 text-center font-bold text-teal-700">評分4</th>
+                            <th className="p-3 border-b border-slate-200 text-center font-bold text-sky-700">最終平均</th><th className="p-3 border-b border-slate-200 text-right font-bold text-orange-600">達成獎金</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          {(() => {
-                            const rows = [];
-                            const brand = counterReportFilter.brand;
-                            COUNTER_BRANCHES[brand].forEach(branch => {
-                              if (!rosters.counter[brand] || !rosters.counter[brand][branch]) return;
-                              let branchSum = 0; let branchCount = 0;
-                              const evaluators = rosters.counter[brand][branch].evaluators.filter(e=>e.active);
-                              const expectedCount = evaluators.length;
-                              const evaluatees = rosters.counter[brand][branch].evaluatees.filter(e=>e.active);
-                              const dirInfo = rosters.counter[brand][branch].director;
-                              const hasDir = dirInfo && dirInfo.active && dirInfo.name;
-                              const rowSpanCount = evaluatees.length + (hasDir ? 1 : 0);
-
-                              if (rowSpanCount === 0) return;
-
-                              evaluatees.forEach((staffObj, sIdx) => {
-                                const staff = staffObj.name;
-                                const rec = counterRecords[counterReportFilter.month]?.[brand]?.[branch]?.[staff];
-                                const summary = getCounterStaffSummary(rec, expectedCount);
-                                if (summary.isComplete) { branchSum += summary.avgScore; branchCount++; }
-                                
-                                const evals = Object.keys(rec?.evaluations || {}).filter(k => rec.evaluations[k].isComplete).map(k => {
-                                  const sum = Object.values(rec.evaluations[k].scores).reduce((a,b)=>a+b,0);
-                                  return { name: k, score: sum/5 };
-                                });
-                                
-                                const ev1 = evals[0] ? `${evals[0].name}` : '-'; const s1 = evals[0] ? evals[0].score : '-';
-                                const ev2 = evals[1] ? `${evals[1].name}` : '-'; const s2 = evals[1] ? evals[1].score : '-';
-                                const ev3 = evals[2] ? `${evals[2].name}` : '-'; const s3 = evals[2] ? evals[2].score : '-';
-                                const ev4 = evals[3] ? `${evals[3].name}` : '-'; const s4 = evals[3] ? evals[3].score : '-';
-
-                                rows.push(
-                                  <tr key={`${brand}-${branch}-${staff}`} className="border-b border-slate-100 hover:bg-white transition-colors">
-                                    {sIdx === 0 && <td rowSpan={rowSpanCount} className="p-3 text-slate-700 border-r border-slate-200 font-bold align-top bg-slate-50">{branch}</td>}
-                                    <td className="p-3 text-slate-800 font-medium">{staff}</td>
-                                    <td className="p-3 text-slate-500 text-sm">客服櫃台</td>
-                                    <td className="p-3 text-center">
-                                      {summary.isComplete ? <span className="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已完成</span> : <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">{summary.evalCount > 0 ? `${summary.evalCount}/${expectedCount}人已評` : '未完成'}</span>}
-                                    </td>
-                                    <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev1}</td>
-                                    <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s1}</td>
-                                    <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev2}</td>
-                                    <td className="p-3 text-center text-sm font-bold text-teal-700">{s2}</td>
-                                    <td className="p-3 text-center text-sm text-slate-600 bg-slate-100/50 border-l border-slate-100">{ev3}</td>
-                                    <td className="p-3 text-center text-sm font-bold text-teal-700 bg-slate-100/50">{s3}</td>
-                                    <td className="p-3 text-center text-sm text-slate-600 border-l border-slate-100">{ev4}</td>
-                                    <td className="p-3 text-center text-sm font-bold text-teal-700">{s4}</td>
-                                    <td className="p-3 text-center font-bold text-sky-700 text-lg border-l border-slate-200">{summary.evalCount > 0 ? summary.avgScore : '-'}</td>
-                                    <td className="p-3 text-right font-bold text-orange-600 border-l border-slate-100">{summary.isComplete ? `$${summary.bonus}` : '-'}</td>
-                                  </tr>
-                                );
-                              });
-
-                              if (hasDir) {
-                                 const dirAvg = branchCount > 0 ? parseFloat((branchSum/branchCount).toFixed(1)) : 0;
-                                 rows.push(
-                                   <tr key={`${brand}-${branch}-dir`} className="border-b-2 border-slate-300 bg-indigo-50/40">
-                                     {evaluatees.length === 0 && <td rowSpan={1} className="p-3 text-slate-700 border-r border-slate-200 font-bold align-top bg-slate-50">{branch}</td>}
-                                     <td className="p-3 font-bold text-indigo-900">{dirInfo.name}</td>
-                                     <td className="p-3 font-bold text-indigo-700 text-sm">該店主任</td>
-                                     <td className="p-3 text-center">{branchCount > 0 ? <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">已結算</span> : <span className="text-slate-400 text-xs font-bold">待結算</span>}</td>
-                                     <td colSpan="8" className="p-3 text-center text-slate-500 text-xs tracking-widest font-bold border-l border-slate-200">── 此為該店所有櫃台平均，不作單獨評分 ──</td>
-                                     <td className="p-3 text-center font-bold text-sky-800 text-lg border-l border-slate-200">{branchCount > 0 ? dirAvg : '-'}</td>
-                                     <td className="p-3 text-right font-bold text-orange-700 text-lg border-l border-slate-200">{branchCount > 0 ? '$' + calculateDirectorBonus(dirAvg) : '-'}</td>
-                                   </tr>
-                                 );
-                              }
-                            });
-                            return rows;
-                          })()}
-                        </tbody>
+                        <tbody>{generateCounterTableRows(counterReportFilter.month, counterReportFilter.brand, rosters, counterRecords, dashboardStatus)}</tbody>
                       </table>
                     </div>
                  </div>
@@ -2034,9 +1867,9 @@
               <div className="bg-slate-800 p-6 text-white text-center"><h2 className="text-2xl font-bold tracking-widest">系統權限與密碼設定</h2></div>
               <div className="p-6 space-y-5">
                 <div><label className="text-sm font-bold text-slate-600 block mb-2">👑 總管理密碼</label><input type="text" value={editingPasswords.superadmin} onChange={(e) => setEditingPasswords({...editingPasswords, superadmin: e.target.value})} className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-slate-800 outline-none transition-shadow bg-white" /></div>
-                <div><label className="text-sm font-bold text-slate-600 block mb-2">👩‍💼 人資密碼 (僅供檢視、匯出用)</label><input type="text" value={editingPasswords.hr} onChange={(e) => setEditingPasswords({...editingPasswords, hr: e.target.value})} className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-shadow bg-white" /></div>
+                <div><label className="text-sm font-bold text-slate-600 block mb-2">💼 人資密碼 (僅供檢視、匯出用)</label><input type="text" value={editingPasswords.hr} onChange={(e) => setEditingPasswords({...editingPasswords, hr: e.target.value})} className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-shadow bg-white" /></div>
                 <hr className="border-slate-200"/>
-                <div><label className="text-sm font-bold text-slate-600 block mb-2">👩‍⚕️ 主管密碼 (服務品質評核用)</label><input type="text" value={editingPasswords.manager} onChange={(e) => setEditingPasswords({...editingPasswords, manager: e.target.value})} className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none transition-shadow bg-white" /></div>
+                <div><label className="text-sm font-bold text-slate-600 block mb-2">🩺 主管密碼 (服務品質評核用)</label><input type="text" value={editingPasswords.manager} onChange={(e) => setEditingPasswords({...editingPasswords, manager: e.target.value})} className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none transition-shadow bg-white" /></div>
                 <div><label className="text-sm font-bold text-slate-600 block mb-2">🏢 店經理密碼 (服務品質核決用)</label><input type="text" value={editingPasswords.storeManager} onChange={(e) => setEditingPasswords({...editingPasswords, storeManager: e.target.value})} className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none transition-shadow bg-white" /></div>
                 <hr className="border-slate-200"/>
                 <div><label className="text-sm font-bold text-slate-600 block mb-2">🛡️ 護理長密碼 (醫療安全評核解鎖用)</label><input type="text" value={editingPasswords.safetyUnlock} onChange={(e) => setEditingPasswords({...editingPasswords, safetyUnlock: e.target.value})} className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-shadow bg-white" /></div>
@@ -2048,16 +1881,14 @@
 
       return (
         <React.Fragment>
-          {/* 總管/人資登入按鈕 */}
           {(sysModule === 'portal' || currentView === 'home') && (
             <div className="fixed top-4 right-4 z-50 no-print animate-fade-in">
               <button onClick={handleAdminToggle} className={`px-4 py-2 rounded-full text-xs font-bold shadow-md border transition-colors backdrop-blur-md ${isSuperAdmin ? 'bg-red-600/90 text-white border-red-700' : isHrLoggedIn ? 'bg-purple-600/90 text-white border-purple-700' : 'bg-white/80 text-slate-600 border-slate-300 hover:bg-white'}`}>
-                {isSuperAdmin ? '👑 總管已登入' : isHrLoggedIn ? '👩‍💼 人資已登入' : '🔐 管理登入'}
+                {isSuperAdmin ? '👑 總管已登入' : isHrLoggedIn ? '💼 人資已登入' : '🔐 管理登入'}
               </button>
             </div>
           )}
           
-          {/* 💡 核心路由渲染 */}
           {currentView === 'settings' && isSuperAdmin ? renderSettings() :
            currentView === 'roster_manager' && isSuperAdmin ? renderRosterManager() :
            sysModule === 'portal' ? renderPortal() : (
@@ -2075,12 +1906,7 @@
             <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
               <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-fade-in">
                 <h3 className="text-xl font-bold text-slate-800 mb-2">需要授權</h3>
-                <p className="text-slate-500 text-sm mb-4">
-                  {pendingRole === 'safetyUnlock' ? '切換至編輯模式需要輸入護理長密碼。' : 
-                   pendingRole === 'admin_login' ? '請輸入總管理者或人資專用密碼。' : 
-                   pendingRole === 'counter_report' || pendingRole === 'counter_report_dash' ? '為確保多對一評分期間的公正性，櫃台獎金報表僅限「總管密碼」解鎖查看。' : 
-                   `切換至「${pendingRole === 'manager' ? '主管評核' : '店經理核決'}」需要密碼。`}
-                </p>
+                <p className="text-slate-500 text-sm mb-4">請輸入密碼以解鎖此功能。</p>
                 <input type="password" placeholder="請輸入密碼" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && confirmPassword()} className="w-full p-3 rounded-lg border border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none mb-5 transition-shadow" />
                 <div className="flex gap-3"><button onClick={() => {setShowPasswordModal(false); setPasswordInput('');}} className="flex-1 py-3 rounded-xl font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">取消</button><button onClick={confirmPassword} className="flex-1 py-3 rounded-xl font-bold bg-sky-600 text-white hover:bg-sky-700 transition-colors shadow-sm">確認</button></div>
               </div>
@@ -2106,9 +1932,7 @@
               <div className="bg-slate-50 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-fade-in border border-slate-200">
                 <div className="bg-teal-700 p-4 text-white flex justify-between items-center sticky top-0">
                    <h3 className="font-bold text-lg tracking-wider">醫療安全 SOP</h3>
-                   <button onClick={() => setShowSopModal(false)} className="text-teal-100 hover:text-white bg-teal-800/50 rounded-full p-1 transition-colors">
-                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                   </button>
+                   <button onClick={() => setShowSopModal(false)} className="text-teal-100 hover:text-white bg-teal-800/50 rounded-full p-1 transition-colors"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
                 <div className="p-6 overflow-y-auto space-y-5 bg-slate-100">
                    {MEDICAL_SOP.map((sop, idx) => (
@@ -2128,7 +1952,7 @@
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
+    const root = window.ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
 </body>
